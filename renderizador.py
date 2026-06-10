@@ -182,36 +182,57 @@ def _notas_do_acorde(notas_ativas: set[int]) -> list[int]:
     return sorted(notas_ativas)
 
 
-def _gerar_sequencia_arpejo(notas: list[int], estilo: str, idx_acorde: int) -> list[int]:
+def _gerar_sequencia_arpejo(
+    notas: list[int],
+    estilo: str,
+    idx_acorde: int,
+    n_divisoes: int = 0,
+) -> list[int]:
     """
-    Dado um conjunto de notas e um estilo, retorna a sequência arpejada.
+    Gera exatamente n_divisoes notas arpejadas.
 
-    Se houver apenas 1 nota, expande automaticamente para oitavas:
-      grave → oitava acima (ascendente)
-      oitava → grave (descendente)
-      alterna a cada grupo (alternado)
+    n_divisoes = numerador do compasso (ts_num):
+      - 4/4  -> n_divisoes=4  (quartenario: 4 pulsos)
+      - 3/4  -> n_divisoes=3  (ternario: 3 pulsos)
+      - 6/8  -> n_divisoes=6  (ou 2, dependendo da interpretacao)
+    Se n_divisoes=0, usa o numero de notas disponivel (comportamento legado).
 
-    ascendente : do mais grave ao mais agudo
-    descendente: do mais agudo ao mais grave
-    alternado  : ascendente nos acordes pares, descendente nos ímpares
+    Expansao:
+      - nota unica -> expande em oitavas para ter material suficiente
+    Ajuste de tamanho:
+      - len < n_divisoes -> cicla as notas (wrap-around)
+      - len > n_divisoes -> toma os primeiros n_divisoes
     """
-    # Expande nota única em oitavas
-    if len(notas) == 1:
-        nota = notas[0]
-        oitava_acima = min(nota + 12, 127)
-        oitava_abaixo = max(nota - 12, 0)
-        # Usa: nota + oitava acima + nota (padrão ascendente)
-        notas = [oitava_abaixo, nota, oitava_acima]
+    if not notas:
+        return []
 
-    if estilo == "ascendente":
-        return sorted(notas)
-    elif estilo == "descendente":
-        return sorted(notas, reverse=True)
+    notas_asc = sorted(set(notas))
+
+    # Expande nota unica em oitavas para ter pelo menos 3 opcoes
+    if len(notas_asc) == 1:
+        n = notas_asc[0]
+        candidatos: list[int] = []
+        if n - 12 >= 0:   candidatos.append(n - 12)
+        candidatos.append(n)
+        if n + 12 <= 127: candidatos.append(n + 12)
+        if n + 24 <= 127: candidatos.append(n + 24)
+        notas_asc = candidatos
+
+    # Sequencia base no estilo escolhido
+    if estilo == "descendente":
+        base = list(reversed(notas_asc))
     elif estilo == "alternado":
-        s = sorted(notas)
-        return s if idx_acorde % 2 == 0 else list(reversed(s))
-    return sorted(notas)
+        base = notas_asc if idx_acorde % 2 == 0 else list(reversed(notas_asc))
+    else:  # ascendente (padrao)
+        base = notas_asc[:]
 
+    # Ajustar para exatamente n_divisoes notas
+    n = n_divisoes if n_divisoes > 0 else len(base)
+    if n <= 0:
+        return base
+
+    # Cicla/trunca para atingir exatamente n notas
+    return [base[i % len(base)] for i in range(n)]
 
 def aplicar_arpejo_na_trilha(
     midi_in: mido.MidiFile,
@@ -268,6 +289,41 @@ def aplicar_arpejo_na_trilha(
 
     trilha_original = midi_in.tracks[trilha_alvo_idx]
     ticks_por_beat = midi_in.ticks_per_beat
+
+    # ── Mapear todas as mudanças de compasso ao longo do MIDI ─────────────
+    # Cada time_signature meta-msg define o compasso a partir de um tick absoluto.
+    # Musicas com compassos alternantes (ex: 4/4 → 3/4 → 4/4) têm vários desses.
+    ts_changes: list[tuple[int, int, int]] = []   # (tick_abs, ts_num, ts_den)
+    for trilha in midi_in.tracks:
+        tick = 0
+        for msg in trilha:
+            tick += msg.time
+            if msg.type == "time_signature":
+                ts_changes.append((tick, msg.numerator, msg.denominator))
+
+    ts_changes.sort(key=lambda x: x[0])
+    if not ts_changes or ts_changes[0][0] > 0:
+        ts_changes.insert(0, (0, 4, 4))   # padrão GM: 4/4 desde o início
+
+    def ts_em_tick(tick: int) -> tuple[int, int]:
+        """Retorna (ts_num, ts_den) vigente no tick dado (busca binária)."""
+        lo, hi = 0, len(ts_changes) - 1
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if ts_changes[mid][0] <= tick:
+                lo = mid
+            else:
+                hi = mid - 1
+        return ts_changes[lo][1], ts_changes[lo][2]
+
+    # Log dos compassos encontrados
+    compassos_unicos = sorted({(num, den) for _, num, den in ts_changes})
+    if len(compassos_unicos) == 1:
+        num0, den0 = compassos_unicos[0]
+        log.info("  ♩  Compasso: %d/%d (uniforme) → %d pulsos por acorde", num0, den0, num0)
+    else:
+        descricao = " / ".join(f"{n}/{d}" for n, d in compassos_unicos)
+        log.info("  ♩  Compassos alternantes detectados: %s → pulsos por acorde variam", descricao)
 
     # ── Descobrir canal MIDI livre ────────────────────────────────────────
     canais_usados: set[int] = set()
@@ -337,11 +393,13 @@ def aplicar_arpejo_na_trilha(
         notas_sorted = sorted(notas_raw, key=lambda x: x[0])
         duracao_total = max(d for _, d in notas_sorted) if notas_sorted else ticks_por_beat
 
+        # Compasso vigente NESTE acorde (pode variar ao longo da musica)
+        ts_num_local, _ = ts_em_tick(tick_ini)
         sequencia = _gerar_sequencia_arpejo(
-            [n for n, _ in notas_sorted], estilo, idx_acorde
+            [n for n, _ in notas_sorted], estilo, idx_acorde, n_divisoes=ts_num_local
         )
-        n_notas = len(sequencia)
-        duracao_nota = max(1, duracao_total // n_notas) if n_notas > 0 else duracao_total
+        # Divide o tempo do acorde igualmente entre ts_num_local pulsos
+        duracao_nota = max(1, duracao_total // ts_num_local)
         vel = max(1, int(BASE_VEL * VEL_SCALE))  # ~60
 
         for i, nota in enumerate(sequencia):
@@ -369,21 +427,25 @@ def aplicar_arpejo_na_trilha(
 
         notas_sorted_g = sorted(grupo["notas"], key=lambda x: x[0])
         duracao_total_g = max(d for _, d in notas_sorted_g) if notas_sorted_g else ticks_por_beat
-        n_seq = max(1, len(ultimo_grupo_notas))
-        dur_fill_nota = max(1, duracao_total_g // n_seq)
-        dur_ciclo = dur_fill_nota * n_seq
-
-        if dur_ciclo == 0:
-            continue
 
         tick_cursor = grupo["tick_fim"]
         ciclo_idx   = 0
 
-        while tick_cursor + dur_ciclo <= tick_proximo:
-            seq_fill = (
-                ultimo_grupo_notas[:]
-                if ciclo_idx % 2 == 0
-                else ultimo_grupo_notas[::-1]
+        while tick_cursor + 1 <= tick_proximo:
+            # Compasso vigente NO INSTANTE do fill (pode mudar durante o silencio)
+            ts_fill, _ = ts_em_tick(tick_cursor)
+            dur_fill_nota = max(1, duracao_total_g // ts_fill)
+            dur_ciclo = dur_fill_nota * ts_fill
+
+            if dur_ciclo == 0 or tick_cursor + dur_ciclo > tick_proximo:
+                break
+
+            # Gera exatamente ts_fill notas por ciclo, alternando direcao
+            seq_fill = _gerar_sequencia_arpejo(
+                ultimo_grupo_notas,
+                "ascendente" if ciclo_idx % 2 == 0 else "descendente",
+                ciclo_idx,
+                n_divisoes=ts_fill,
             )
             for j, nota in enumerate(seq_fill):
                 t_on  = tick_cursor + j * dur_fill_nota
