@@ -1,0 +1,4 @@
+# Dependências Python do mid2mp3
+# Instale com: pip install -r requirements.txt
+
+mido>=1.3.0

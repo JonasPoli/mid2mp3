@@ -1,0 +1,45 @@
+# ── Ambiente Python ─────────────────────────────────────────────────────────
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Saída gerada ─────────────────────────────────────────────────────────────
+output/
+
+# ── Banco de progresso ────────────────────────────────────────────────────────
+progresso.db
+progresso.db-shm
+progresso.db-wal
+
+# ── SoundFonts (arquivos grandes — baixar manualmente) ────────────────────────
+soundfonts/*.sf2
+soundfonts/*.sf3
+soundfonts/*.sfz
+
+# ── Arquivos temporários ──────────────────────────────────────────────────────
+*.wav
+*.tmp
+tmp/
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+ehthumbs.db
+Thumbs.db
+
+# ── Editores ──────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
