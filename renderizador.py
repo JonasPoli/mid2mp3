@@ -315,9 +315,19 @@ def aplicar_arpejo_na_trilha(
                 else:
                     grupos.append({"tick_inicio": t_ini, "notas": [(msg.note, duracao)]})
 
-    # ── Passo 3: gerar eventos arpejados com volume 75% ───────────────────
-    VEL_SCALE = 0.75  # 75% de volume
-    BASE_VEL  = 80    # velocidade base para notas geradas
+
+    # ── Passo 3: calcular fim de cada grupo ──────────────────────────────────
+    for grupo in grupos:
+        if grupo["notas"]:
+            grupo["tick_fim"] = grupo["tick_inicio"] + max(d for _, d in grupo["notas"])
+        else:
+            grupo["tick_fim"] = grupo["tick_inicio"]
+
+    # ── Passo 4: gerar eventos arpejados com volume 75% ──────────────────────
+    VEL_SCALE  = 0.75
+    VEL_FILL   = 0.45   # fill de silencio: mais suave
+    BASE_VEL   = 80
+    MIN_GAP    = ticks_por_beat * 2   # silencio minimo para ativar o fill (minima)
 
     novos_eventos: list[tuple[int, mido.Message]] = []
 
@@ -332,26 +342,70 @@ def aplicar_arpejo_na_trilha(
         )
         n_notas = len(sequencia)
         duracao_nota = max(1, duracao_total // n_notas) if n_notas > 0 else duracao_total
-        vel = max(1, int(BASE_VEL * VEL_SCALE))  # 60
+        vel = max(1, int(BASE_VEL * VEL_SCALE))  # ~60
 
         for i, nota in enumerate(sequencia):
             t_on  = tick_ini + i * duracao_nota
             t_off = t_on + duracao_nota
-            novos_eventos.append((t_on,  mido.Message("note_on",  channel=canal_livre, note=nota, velocity=vel,  time=0)))
-            novos_eventos.append((t_off, mido.Message("note_off", channel=canal_livre, note=nota, velocity=0,    time=0)))
+            novos_eventos.append((t_on,  mido.Message("note_on",  channel=canal_livre, note=nota, velocity=vel, time=0)))
+            novos_eventos.append((t_off, mido.Message("note_off", channel=canal_livre, note=nota, velocity=0,   time=0)))
 
-    # ── Passo 4: montar nova trilha ───────────────────────────────────────
+    # ── Passo 5: preencher silencias com ping-pong ───────────────────────────
+    vel_fill = max(1, int(BASE_VEL * VEL_FILL))  # ~36
+    ultimo_grupo_notas: list[int] = []
+
+    for i, grupo in enumerate(grupos):
+        notas_grupo = sorted([n for n, _ in grupo["notas"]])
+        if notas_grupo:
+            ultimo_grupo_notas = notas_grupo
+
+        tick_proximo = grupos[i + 1]["tick_inicio"] if i + 1 < len(grupos) else None
+        if tick_proximo is None:
+            continue
+
+        gap = tick_proximo - grupo["tick_fim"]
+        if gap < MIN_GAP or not ultimo_grupo_notas:
+            continue
+
+        notas_sorted_g = sorted(grupo["notas"], key=lambda x: x[0])
+        duracao_total_g = max(d for _, d in notas_sorted_g) if notas_sorted_g else ticks_por_beat
+        n_seq = max(1, len(ultimo_grupo_notas))
+        dur_fill_nota = max(1, duracao_total_g // n_seq)
+        dur_ciclo = dur_fill_nota * n_seq
+
+        if dur_ciclo == 0:
+            continue
+
+        tick_cursor = grupo["tick_fim"]
+        ciclo_idx   = 0
+
+        while tick_cursor + dur_ciclo <= tick_proximo:
+            seq_fill = (
+                ultimo_grupo_notas[:]
+                if ciclo_idx % 2 == 0
+                else ultimo_grupo_notas[::-1]
+            )
+            for j, nota in enumerate(seq_fill):
+                t_on  = tick_cursor + j * dur_fill_nota
+                t_off = t_on + dur_fill_nota
+                novos_eventos.append((t_on,  mido.Message("note_on",  channel=canal_livre, note=nota, velocity=vel_fill, time=0)))
+                novos_eventos.append((t_off, mido.Message("note_off", channel=canal_livre, note=nota, velocity=0,        time=0)))
+            tick_cursor += dur_ciclo
+            ciclo_idx   += 1
+
+        if ciclo_idx > 0:
+            log.debug("  fill: grupo %d, %d ciclos, gap=%d ticks", i, ciclo_idx, gap)
+
+    # ── Passo 6: montar nova trilha ───────────────────────────────────────────
     novos_eventos.sort(key=lambda x: x[0])
     nova_trilha = mido.MidiTrack()
     nova_trilha.name = (trilha_original.name or "baixo") + "_arpejo"
 
-    # Program change no início (instrumento = patch_gm ou copia o da trilha original)
     if patch_gm is not None:
         nova_trilha.append(
             mido.Message("program_change", channel=canal_livre, program=patch_gm, time=0)
         )
     else:
-        # copia o program_change original, se existir
         for msg in trilha_original:
             if msg.type == "program_change":
                 nova_trilha.append(
@@ -368,18 +422,19 @@ def aplicar_arpejo_na_trilha(
 
     nova_trilha.append(mido.MetaMessage("end_of_track", time=0))
 
-    # ── Passo 5: novo MidiFile = originais + nova trilha ─────────────────
+    # ── Passo 7: novo MidiFile = originais + nova trilha ──────────────────────
     novo_midi = mido.MidiFile(type=1, ticks_per_beat=midi_in.ticks_per_beat)
     for trilha in midi_in.tracks:
-        novo_midi.tracks.append(trilha)   # todas originais intactas
-    novo_midi.tracks.append(nova_trilha)  # nova trilha de arpejo no final
+        novo_midi.tracks.append(trilha)
+    novo_midi.tracks.append(nova_trilha)
 
     log.info(
-        "  ✔  Trilha de arpejo adicionada (canal %d, vel ~%d/127, patch %s)",
-        canal_livre, vel,
+        "  ✔  Trilha de arpejo adicionada (canal %d, vel ~%d/127, fill ~%d/127, patch %s)",
+        canal_livre, vel, vel_fill,
         str(patch_gm) if patch_gm is not None else "original",
     )
     return novo_midi
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
