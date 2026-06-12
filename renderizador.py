@@ -9,13 +9,14 @@ Uso rápido:
     python renderizador.py --status
     python renderizador.py --formato orquestra
     python renderizador.py --mid "001- Cristo meu Mestre.mid" --formato quarteto_cordas
-    python renderizador.py --formato metais --arpejo --estilo-arpejo alternado
+    python renderizador.py --formato metais --arpejo --estilo-arpejo sacro
     python renderizador.py --reiniciar --formato orquestra
 """
 
 import argparse
 import logging
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -54,6 +55,8 @@ def descobrir_soundfonts() -> dict[str, Path]:
     sf2s: dict[str, Path] = {}
     if SOUNDFONTS_DIR.exists():
         for sf2 in sorted(SOUNDFONTS_DIR.glob("*.sf2")):
+            if sf2.name.startswith("."):
+                continue
             nome_cli = sf2.stem.replace(" ", "_").replace("-", "_")
             sf2s[nome_cli] = sf2
     return sf2s
@@ -62,7 +65,7 @@ def descobrir_soundfonts() -> dict[str, Path]:
 # Carrega uma vez ao iniciar — reúsado em todo o script
 SOUNDFONTS: dict[str, Path] = descobrir_soundfonts()
 
-ESTILOS_ARPEJO = ["ascendente", "descendente", "alternado"]
+ESTILOS_ARPEJO = ["ascendente", "descendente", "alternado", "sacro"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -234,6 +237,303 @@ def _gerar_sequencia_arpejo(
     # Cicla/trunca para atingir exatamente n notas
     return [base[i % len(base)] for i in range(n)]
 
+def aplicar_arpejo_sacro(
+    midi_in: mido.MidiFile,
+    patch_gm: int | None = None,
+    log: logging.Logger | None = None,
+) -> mido.MidiFile:
+    """
+    Gera uma trilha de arpejo sacro inteligente baseada nas quatro vozes (SATB).
+    """
+    if log is None:
+        log = logging.getLogger("mid2mp3")
+
+    log.info("  ♫  Iniciando geração de Arpejo Sacro Inteligente (SATB)...")
+
+    # 1. Identificar trilhas com notas
+    trilhas_com_notas = []
+    for idx, t in enumerate(midi_in.tracks):
+        contem_notas = any(m.type == "note_on" and m.velocity > 0 for m in t)
+        if contem_notas:
+            trilhas_com_notas.append((idx, t))
+
+    if not trilhas_com_notas:
+        log.warning("Nenhuma trilha com notas encontrada para o arpejo sacro.")
+        return midi_in
+
+    # Classificar as trilhas por tom (do mais agudo ao mais grave)
+    def mediana_notas(t: mido.MidiTrack) -> float:
+        ns = [m.note for m in t if m.type == "note_on" and m.velocity > 0]
+        if not ns:
+            return 60.0
+        ns.sort()
+        return ns[len(ns) // 2]
+
+    trilhas_ordenadas = sorted(trilhas_com_notas, key=lambda x: mediana_notas(x[1]), reverse=True)
+    num_vozes = len(trilhas_ordenadas)
+    log.info("  ♩  Vozes detectadas para arpejo sacro: %d", num_vozes)
+
+    # Mapeamento SATB robusto
+    if num_vozes == 1:
+        s_track = c_track = t_track = b_track = trilhas_ordenadas[0][1]
+    elif num_vozes == 2:
+        s_track = c_track = trilhas_ordenadas[0][1]
+        t_track = b_track = trilhas_ordenadas[1][1]
+    elif num_vozes == 3:
+        s_track = trilhas_ordenadas[0][1]
+        c_track = t_track = trilhas_ordenadas[1][1]
+        b_track = trilhas_ordenadas[2][1]
+    else:
+        s_track = trilhas_ordenadas[0][1]
+        c_track = trilhas_ordenadas[1][1]
+        t_track = trilhas_ordenadas[2][1]
+        b_track = trilhas_ordenadas[-1][1]
+
+    # Obter notas absolutas de cada voz
+    def obter_notas_absolutas(track: mido.MidiTrack) -> list[dict]:
+        notas = []
+        notas_ativas = {}  # note -> (start_tick, velocity)
+        tick_atual = 0
+        for msg in track:
+            tick_atual += msg.time
+            if msg.type == "note_on" and msg.velocity > 0:
+                notas_ativas[msg.note] = (tick_atual, msg.velocity)
+            elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
+                if msg.note in notas_ativas:
+                    start_tick, velocity = notas_ativas.pop(msg.note)
+                    notas.append({
+                        "note": msg.note,
+                        "start": start_tick,
+                        "end": tick_atual,
+                        "velocity": velocity
+                    })
+        for note, (start_tick, velocity) in notas_ativas.items():
+            notas.append({
+                "note": note,
+                "start": start_tick,
+                "end": tick_atual,
+                "velocity": velocity
+            })
+        return sorted(notas, key=lambda x: x["start"])
+
+    soprano_notas = obter_notas_absolutas(s_track)
+    contralto_notas = obter_notas_absolutas(c_track)
+    tenor_notas = obter_notas_absolutas(t_track)
+    baixo_notas = obter_notas_absolutas(b_track)
+
+    # 2. Descobrir canal MIDI livre
+    canais_usados: set[int] = set()
+    for trilha in midi_in.tracks:
+        for msg in trilha:
+            if hasattr(msg, "channel"):
+                canais_usados.add(msg.channel)
+    canal_livre = next(
+        (c for c in range(16) if c != 9 and c not in canais_usados),
+        15,
+    )
+
+    # 3. Mapear time signature changes
+    ts_changes: list[tuple[int, int, int]] = []
+    for trilha in midi_in.tracks:
+        tick = 0
+        for msg in trilha:
+            tick += msg.time
+            if msg.type == "time_signature":
+                ts_changes.append((tick, msg.numerator, msg.denominator))
+    ts_changes.sort(key=lambda x: x[0])
+    if not ts_changes or ts_changes[0][0] > 0:
+        ts_changes.insert(0, (0, 4, 4))
+
+    def ts_em_tick(tick: int) -> tuple[int, int]:
+        lo, hi = 0, len(ts_changes) - 1
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if ts_changes[mid][0] <= tick:
+                lo = mid
+            else:
+                hi = mid - 1
+        return ts_changes[lo][1], ts_changes[lo][2]
+
+    # 4. Calcular limites de compassos
+    ticks_por_beat = midi_in.ticks_per_beat
+    max_tick = 0
+    for track in midi_in.tracks:
+        t = 0
+        for msg in track:
+            t += msg.time
+        if t > max_tick:
+            max_tick = t
+
+    limites_compassos = []
+    tick_atual = 0
+    while tick_atual < max_tick:
+        num, den = ts_em_tick(tick_atual)
+        len_measure = int(ticks_por_beat * 4 * num / den)
+        if len_measure <= 0:
+            len_measure = ticks_por_beat * 4
+        limites_compassos.append((tick_atual, tick_atual + len_measure, num, den))
+        tick_atual += len_measure
+
+    # 5. Helpers para buscar notas das vozes
+    def obter_nota_voz_no_tick(vozes_notas: list[dict], tick: int, m_start: int, m_end: int) -> int | None:
+        active = [n for n in vozes_notas if n["start"] <= tick < n["end"]]
+        if active:
+            return active[0]["note"]
+        in_measure = [n for n in vozes_notas if m_start <= n["start"] < m_end]
+        if in_measure:
+            in_measure.sort(key=lambda x: abs(x["start"] - tick))
+            return in_measure[0]["note"]
+        active_start = [n for n in vozes_notas if n["start"] <= m_start < n["end"]]
+        if active_start:
+            return active_start[0]["note"]
+        if vozes_notas:
+            vozes_notas_sorted = sorted(vozes_notas, key=lambda x: abs(x["start"] - tick))
+            return vozes_notas_sorted[0]["note"]
+        return None
+
+    def obter_primeira_nota_do_baixo(baixo_notas: list[dict], m_start: int, m_end: int) -> int | None:
+        in_measure = [n for n in baixo_notas if m_start <= n["start"] < m_end]
+        if in_measure:
+            in_measure.sort(key=lambda x: x["start"])
+            return in_measure[0]["note"]
+        active_at_start = [n for n in baixo_notas if n["start"] <= m_start < n["end"]]
+        if active_at_start:
+            return active_at_start[0]["note"]
+        before = [n for n in baixo_notas if n["end"] <= m_start]
+        if before:
+            before.sort(key=lambda x: x["end"], reverse=True)
+            return before[0]["note"]
+        if baixo_notas:
+            return baixo_notas[0]["note"]
+        return None
+
+    # 6. Gerar eventos
+    novos_eventos = []
+    import random
+    rng = random.Random(42)
+
+    for idx_m, (m_start, m_end, num, den) in enumerate(limites_compassos):
+        # Lift pedal (0) e press pedal (127) para humanizar sustain por compasso
+        novos_eventos.append((m_start, mido.Message("control_change", channel=canal_livre, control=64, value=0, time=0)))
+        novos_eventos.append((m_start + 5, mido.Message("control_change", channel=canal_livre, control=64, value=127, time=0)))
+
+        D = int(num * (8 / den))
+        if D <= 0:
+            D = 8
+        duracao_nota = int((m_end - m_start) / D)
+        if duracao_nota <= 0:
+            duracao_nota = 1
+
+        primeira_nota_baixo = obter_primeira_nota_do_baixo(baixo_notas, m_start, m_end)
+
+        # Escolher padrão de vozes
+        if D == 8:
+            pattern = ['B', 'T', 'A', 'T', 'S', 'T', 'A', 'T']
+        elif D == 6:
+            pattern = ['B', 'T', 'A', 'S', 'A', 'T']
+        elif D == 4:
+            pattern = ['B', 'T', 'A', 'T']
+        else:
+            base = ['B', 'T', 'A', 'S', 'A', 'T']
+            pattern = [base[idx % len(base)] for idx in range(D)]
+
+        for i in range(D):
+            t_on = m_start + i * duracao_nota
+            t_off = t_on + duracao_nota
+
+            role = pattern[i]
+
+            # Buscar notas correspondentes no tick
+            note_B = obter_nota_voz_no_tick(baixo_notas, t_on, m_start, m_end)
+            note_T = obter_nota_voz_no_tick(tenor_notas, t_on, m_start, m_end)
+            note_A = obter_nota_voz_no_tick(contralto_notas, t_on, m_start, m_end)
+            note_S = obter_nota_voz_no_tick(soprano_notas, t_on, m_start, m_end)
+
+            if note_B is None: note_B = 48
+            if note_T is None: note_T = note_B + 12
+            if note_A is None: note_A = note_T + 4
+            if note_S is None: note_S = note_A + 5
+
+            # Mapeia nota
+            if role == 'B':
+                if i == 0 and primeira_nota_baixo is not None:
+                    note = primeira_nota_baixo
+                else:
+                    note = note_B
+            elif role == 'T':
+                note = note_T
+            elif role == 'A':
+                note = note_A
+            elif role == 'S':
+                note = note_S
+
+            # Dinâmica (velocity)
+            if role == 'B':
+                vel = rng.randint(55, 75)
+            elif role == 'T':
+                vel = rng.randint(35, 55)
+            elif role == 'A':
+                vel = rng.randint(35, 55)
+            elif role == 'S':
+                vel = rng.randint(30, 45)
+
+            # Transição suave no final do compasso
+            if i == D - 1 and idx_m + 1 < len(limites_compassos):
+                next_m_start, next_m_end = limites_compassos[idx_m + 1][:2]
+                next_bass = obter_primeira_nota_do_baixo(baixo_notas, next_m_start, next_m_end)
+                if next_bass is not None:
+                    best_note = note
+                    min_diff = abs(note - next_bass)
+                    for octave_shift in [-24, -12, 12, 24]:
+                        shifted = note + octave_shift
+                        if 0 <= shifted <= 127:
+                            diff = abs(shifted - next_bass)
+                            if diff < min_diff:
+                                min_diff = diff
+                                best_note = shifted
+                    note = best_note
+
+            novos_eventos.append((t_on, mido.Message("note_on", channel=canal_livre, note=note, velocity=vel, time=0)))
+            novos_eventos.append((t_off, mido.Message("note_off", channel=canal_livre, note=note, velocity=0, time=0)))
+
+    novos_eventos.sort(key=lambda x: x[0])
+    nova_trilha = mido.MidiTrack()
+    nova_trilha.name = "Arpejo Sacro Inteligente"
+
+    # Definir instrumento (patch)
+    if patch_gm is not None:
+        program = patch_gm
+    else:
+        program = 0
+        for msg in b_track:
+            if msg.type == "program_change":
+                program = msg.program
+                break
+
+    nova_trilha.append(
+        mido.Message("program_change", channel=canal_livre, program=program, time=0)
+    )
+
+    tick_prev = 0
+    for tick_abs, msg in novos_eventos:
+        delta = tick_abs - tick_prev
+        nova_trilha.append(msg.copy(time=delta))
+        tick_prev = tick_abs
+
+    nova_trilha.append(mido.MetaMessage("end_of_track", time=0))
+
+    novo_midi = mido.MidiFile(type=1, ticks_per_beat=midi_in.ticks_per_beat)
+    for trilha in midi_in.tracks:
+        novo_midi.tracks.append(trilha)
+    novo_midi.tracks.append(nova_trilha)
+
+    log.info(
+        "  ✔  Trilha de arpejo sacro adicionada (canal %d, patch %d)",
+        canal_livre,
+        program
+    )
+    return novo_midi
+
 def aplicar_arpejo_na_trilha(
     midi_in: mido.MidiFile,
     estilo: str = "ascendente",
@@ -253,6 +553,9 @@ def aplicar_arpejo_na_trilha(
     """
     if log is None:
         log = logging.getLogger("mid2mp3")
+
+    if estilo == "sacro":
+        return aplicar_arpejo_sacro(midi_in, patch_gm, log)
 
     if len(midi_in.tracks) < 2:
         log.warning("MIDI tem apenas 1 trilha; arpejo ignorado.")
@@ -499,6 +802,1135 @@ def aplicar_arpejo_na_trilha(
 
 
 
+def aplicar_arranjo(
+    midi_in: mido.MidiFile,
+    tipo: str,
+    log: logging.Logger | None = None,
+) -> mido.MidiFile:
+    """
+    Cria um arranjo específico duplicando e distribuindo as vozes
+    em famílias de instrumentos de acordo com o tipo escolhido.
+    """
+    if log is None:
+        log = logging.getLogger("mid2mp3")
+
+    log.info("  🎻  Aplicando arranjo estilo '%s'...", tipo)
+
+    # 1. Identificar quais trilhas possuem notas de fato
+    trilhas_com_notas = []
+    for idx, t in enumerate(midi_in.tracks):
+        contem_notas = any(m.type == "note_on" and m.velocity > 0 for m in t)
+        if contem_notas:
+            trilhas_com_notas.append((idx, t))
+
+    if not trilhas_com_notas:
+        log.warning("Nenhuma trilha com notas para arranjar.")
+        return midi_in
+
+    # Classificar as trilhas por tom (do mais agudo ao mais grave)
+    def mediana_notas(t: mido.MidiTrack) -> float:
+        ns = [m.note for m in t if m.type == "note_on" and m.velocity > 0]
+        if not ns:
+            return 60.0
+        ns.sort()
+        return ns[len(ns) // 2]
+
+    trilhas_ordenadas = sorted(trilhas_com_notas, key=lambda x: mediana_notas(x[1]), reverse=True)
+    num_vozes = len(trilhas_ordenadas)
+    log.info("  Vozes detectadas para arranjo: %d", num_vozes)
+
+    novo_midi = mido.MidiFile(type=1, ticks_per_beat=midi_in.ticks_per_beat)
+
+    # Mantém a trilha 0 (tempo, assinaturas, compassos, etc.)
+    if len(midi_in.tracks) > 0:
+        trilha_tempo = mido.MidiTrack()
+        for msg in midi_in.tracks[0]:
+            if msg.type not in ("note_on", "note_off"):
+                trilha_tempo.append(msg.copy())
+        novo_midi.tracks.append(trilha_tempo)
+
+    # Definir as configurações de instrumentos para cada tipo de arranjo
+    config_arranjos = {
+        "cordas": {
+            "camadas": [
+                {"patch": 40, "vol": 1.0, "nome": "Violino"},      # Soprano
+                {"patch": 40, "vol": 0.95, "nome": "Violino II"},  # Alto
+                {"patch": 41, "vol": 0.9, "nome": "Viola"},        # Tenor
+                {"patch": 42, "vol": 0.85, "nome": "Cello"},       # Baixo
+            ]
+        },
+        "metais": {
+            "camadas": [
+                {"patch": 56, "vol": 0.7, "nome": "Trompete"},
+                {"patch": 60, "vol": 0.75, "nome": "Trompa"},
+                {"patch": 57, "vol": 0.7, "nome": "Trombone"},
+                {"patch": 58, "vol": 0.65, "nome": "Tuba"},
+            ]
+        },
+        "orgaos": {
+            "camadas": [
+                {"patch": 19, "vol": 0.85, "nome": "Órgão de Igreja"},
+                {"patch": 20, "vol": 0.85, "nome": "Harmônio/Reed"},
+                {"patch": 16, "vol": 0.75, "nome": "Órgão Drawbar"},
+                {"patch": 18, "vol": 0.7, "nome": "Órgão de Rock"},
+            ]
+        },
+        "pianos": {
+            "camadas": [
+                {"patch": 0, "vol": 0.8, "nome": "Piano de Cauda"},
+                {"patch": 1, "vol": 0.75, "nome": "Piano Brilhante"},
+                {"patch": 4, "vol": 0.7, "nome": "Piano Elétrico 1"},
+                {"patch": 5, "vol": 0.65, "nome": "Piano Elétrico 2"},
+            ]
+        },
+        "classico_1": {
+            "camadas": [
+                {"patch": 73, "vol": 0.8, "nome": "Flauta"},
+                {"patch": 68, "vol": 0.8, "nome": "Oboé"},
+                {"patch": 46, "vol": 0.75, "nome": "Harpa"},
+                {"patch": 42, "vol": 0.7, "nome": "Violoncelo"},
+            ]
+        },
+        "sintetizado": {
+            "camadas": [
+                {"patch": 80, "vol": 0.75, "nome": "Square Lead"},
+                {"patch": 62, "vol": 0.7, "nome": "Synth Brass 1"},
+                {"patch": 50, "vol": 0.75, "nome": "Synth Strings 1"},
+                {"patch": 38, "vol": 0.7, "nome": "Synth Bass 1"},
+            ]
+        },
+        "combinacao_3": {
+            "camadas": [
+                {"patch": 71, "vol": 0.85, "nome": "Clarinete"},
+                {"patch": 45, "vol": 0.8, "nome": "Pizzicato Strings"},
+                {"patch": 69, "vol": 0.8, "nome": "Corne Inglês"},
+                {"patch": 70, "vol": 0.75, "nome": "Fagote"},
+            ]
+        },
+        "combinacao_4": {
+            "camadas": [
+                {"patch": 8, "vol": 0.85, "nome": "Celesta"},
+                {"patch": 52, "vol": 0.8, "nome": "Coro Aahs"},
+                {"patch": 54, "vol": 0.75, "nome": "Voz Sintética"},
+                {"patch": 49, "vol": 0.7, "nome": "Cordas Ensemble 2"},
+            ]
+        },
+        "combinacao_5": {
+            "camadas": [
+                {"patch": 21, "vol": 0.8, "nome": "Acordeão"},
+                {"patch": 24, "vol": 0.8, "nome": "Violão de Nylon"},
+                {"patch": 22, "vol": 0.75, "nome": "Gaita"},
+                {"patch": 32, "vol": 0.7, "nome": "Baixo Acústico"},
+            ]
+        },
+        "orgao_igreja": {
+            "camadas": [
+                {"patch": 19, "vol": 0.85, "nome": "Órgão de Igreja I"},
+                {"patch": 19, "vol": 0.85, "nome": "Órgão de Igreja II"},
+                {"patch": 19, "vol": 0.85, "nome": "Órgão de Igreja III"},
+                {"patch": 19, "vol": 0.85, "nome": "Órgão de Igreja IV"},
+            ]
+        },
+        "orgao_reed": {
+            "camadas": [
+                {"patch": 20, "vol": 0.85, "nome": "Harmônio I"},
+                {"patch": 20, "vol": 0.85, "nome": "Harmônio II"},
+                {"patch": 20, "vol": 0.85, "nome": "Harmônio III"},
+                {"patch": 20, "vol": 0.85, "nome": "Harmônio IV"},
+            ]
+        },
+        "orquestra_sacra_1": {
+            "camadas": [
+                {"patch": 73, "vol": 0.85, "nome": "Flauta"},
+                {"patch": 71, "vol": 0.80, "nome": "Clarinete"},
+                {"patch": 60, "vol": 0.75, "nome": "Trompa"},
+                {"patch": 42, "vol": 0.85, "nome": "Violoncelo"},
+            ]
+        },
+        "orquestra_sacra_2": {
+            "camadas": [
+                {"patch": 40, "vol": 0.85, "nome": "Violino"},
+                {"patch": 68, "vol": 0.80, "nome": "Oboé"},
+                {"patch": 41, "vol": 0.80, "nome": "Viola"},
+                {"patch": 70, "vol": 0.85, "nome": "Fagote"},
+            ]
+        },
+        "orquestra_suave": {
+            "camadas": [
+                {"patch": 68, "vol": 0.75, "nome": "Oboé"},
+                {"patch": 71, "vol": 0.75, "nome": "Clarinete"},
+                {"patch": 41, "vol": 0.75, "nome": "Viola"},
+                {"patch": 42, "vol": 0.80, "nome": "Violoncelo"},
+            ]
+        }
+    }
+
+    # Tratamento especial para orquestra completa (contendo tudo acima)
+    if tipo == "orquestra_completa":
+        familias_orq = {
+            "cordas":   [48, 48, 48, 48],  # String Ensemble
+            "metais":   [56, 60, 57, 58],  # Trumpet, Horn, Trombone, Tuba
+            "paletas":  [73, 68, 71, 70],  # Flute, Oboe, Clarinet, Bassoon
+            "piano":    [0, 0, 0, 0],      # Piano
+            "orgao":    [19, 19, 19, 19],  # Church Organ
+        }
+        
+        canais_disponiveis = [c for c in range(16) if c != 9]
+        ch_idx = 0
+        
+        for idx_pos, (idx_orig, trilha_orig) in enumerate(trilhas_ordenadas):
+            for nome_fam, patches in familias_orq.items():
+                patch = patches[idx_pos % len(patches)]
+                canal = canais_disponiveis[ch_idx % len(canais_disponiveis)]
+                ch_idx += 1
+                
+                vol_mult = 0.55 if nome_fam in ("metais", "piano") else 0.7
+                nome_trilha = f"Voz {idx_pos+1} - {nome_fam.capitalize()}"
+                
+                trilha_gerada = _criar_trilha_orquestrada(
+                    trilha_orig, canal, patch, nome_trilha, volume_mult=vol_mult
+                )
+                novo_midi.tracks.append(trilha_gerada)
+        return novo_midi
+
+    if tipo not in config_arranjos:
+        log.warning("Tipo de arranjo '%s' desconhecido. Ignorando.", tipo)
+        return midi_in
+
+    camadas = config_arranjos[tipo]["camadas"]
+    canais_disponiveis = [c for c in range(16) if c != 9]
+
+    for idx_pos, (idx_orig, trilha_orig) in enumerate(trilhas_ordenadas):
+        config_camada = camadas[idx_pos % len(camadas)]
+        canal = canais_disponiveis[idx_pos % len(canais_disponiveis)]
+        
+        trilha_gerada = _criar_trilha_orquestrada(
+            trilha_orig,
+            canal,
+            config_camada["patch"],
+            f"Voz {idx_pos+1} - {config_camada['nome']}",
+            volume_mult=config_camada["vol"]
+        )
+        novo_midi.tracks.append(trilha_gerada)
+
+    return novo_midi
+
+
+def _criar_trilha_orquestrada(
+    trilha_orig: mido.MidiTrack,
+    canal: int,
+    patch: int,
+    nome: str,
+    volume_mult: float = 1.0,
+) -> mido.MidiTrack:
+    nova_trilha = mido.MidiTrack()
+    nova_trilha.name = nome
+    nova_trilha.append(mido.Message("program_change", channel=canal, program=patch, time=0))
+    
+    for msg in trilha_orig:
+        if msg.type in ("note_on", "note_off"):
+            vel = msg.velocity
+            if msg.type == "note_on" and vel > 0:
+                vel = max(1, min(127, int(vel * volume_mult)))
+            nova_trilha.append(msg.copy(channel=canal, velocity=vel))
+        elif msg.type == "program_change":
+            pass
+        elif not msg.is_meta:
+            if hasattr(msg, "channel"):
+                nova_trilha.append(msg.copy(channel=canal))
+            else:
+                nova_trilha.append(msg.copy())
+        else:
+            if msg.type == "end_of_track":
+                nova_trilha.append(msg.copy())
+                
+    return nova_trilha
+
+
+
+def aplicar_humanizar_cordas(
+    midi_in: mido.MidiFile,
+    log: logging.Logger | None = None,
+) -> mido.MidiFile:
+    """
+    Aplica humanização (micro-dinâmicas de velocity e articulação de legato)
+    nas notas da trilha para reduzir a sensação robótica do MIDI.
+    """
+    import random
+    if log is None:
+        log = logging.getLogger("mid2mp3")
+    log.info("  🎻  Humanizando articulação de cordas (legato e micro-dinâmicas)...")
+    
+    novo_midi = mido.MidiFile(type=midi_in.type, ticks_per_beat=midi_in.ticks_per_beat)
+    rng = random.Random(42)  # Semente fixa para ser determinístico/reproduzível
+    
+    for idx_trilha, trilha in enumerate(midi_in.tracks):
+        # Trilha 0 (tempo) e trilha de arpejo -> sempre intocadas
+        eh_arpejo = "_arpejo" in (trilha.name or "").lower()
+        if idx_trilha == 0 or eh_arpejo:
+            novo_midi.tracks.append(trilha)
+            continue
+            
+        # 1. Converter eventos da trilha para ticks absolutos
+        eventos_abs = []
+        tick = 0
+        for msg in trilha:
+            tick += msg.time
+            eventos_abs.append([tick, msg])
+            
+        # 2. Aplicar micro-dinâmicas (variação de velocity)
+        for ev in eventos_abs:
+            msg = ev[1]
+            if msg.type == "note_on" and msg.velocity > 0:
+                var = rng.randint(-7, 7)
+                msg.velocity = max(1, min(127, msg.velocity + var))
+                
+        # 3. Aplicar Legato (sobreposição suave de notas consecutivas no mesmo canal)
+        por_canal = {}
+        for i, ev in enumerate(eventos_abs):
+            msg = ev[1]
+            if hasattr(msg, "channel") and msg.channel != 9:  # Ignora percussão
+                por_canal.setdefault(msg.channel, []).append(i)
+                
+        for canal, indices in por_canal.items():
+            notas_ativas = {}
+            for idx_ev in indices:
+                tick_abs, msg = eventos_abs[idx_ev]
+                if msg.type == "note_on" and msg.velocity > 0:
+                    notas_ativas[msg.note] = (tick_abs, idx_ev)
+                elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
+                    if msg.note in notas_ativas:
+                        t_on, idx_on = notas_ativas.pop(msg.note)
+                        duracao = tick_abs - t_on
+                        
+                        # Encontrar se existe uma próxima nota iniciando em breve neste canal
+                        proxima_nota = None
+                        for idx_prox in indices:
+                            if idx_prox > idx_ev:
+                                t_prox, msg_prox = eventos_abs[idx_prox]
+                                if msg_prox.type == "note_on" and msg_prox.velocity > 0:
+                                    proxima_nota = (t_prox, msg_prox)
+                                    break
+                        
+                        if proxima_nota:
+                            t_prox, msg_prox = proxima_nota
+                            distancia = t_prox - tick_abs
+                            
+                            # Se a distância entre o fim desta nota e o início da próxima for menor que 30 ticks
+                            if distancia <= 30:
+                                # Legato: estende a nota atual em 15% da sua duração (máximo de 40 ticks)
+                                extensao = max(5, min(40, int(duracao * 0.15)))
+                                ev[0] = t_prox + extensao
+                                
+        # 4. Reordenar e converter de volta para delta-time
+        eventos_abs.sort(key=lambda e: e[0])
+        nova_trilha = mido.MidiTrack()
+        nova_trilha.name = trilha.name
+        
+        tick_prev = 0
+        for tick_abs, msg in eventos_abs:
+            delta = max(0, tick_abs - tick_prev)
+            nova_trilha.append(msg.copy(time=delta))
+            tick_prev = tick_abs
+            
+        novo_midi.tracks.append(nova_trilha)
+        
+    return novo_midi
+
+
+def aplicar_pedal_sustain(
+    midi_in: mido.MidiFile,
+    log: logging.Logger | None = None,
+) -> mido.MidiFile:
+    """
+    Simula um pianista usando o pedal de sustain (CC 64).
+    Para cada canal ativo:
+    - Detecta o início de novos acordes/notas.
+    - Libera o pedal (CC 64 = 0) no início do acorde para limpar a ressonância.
+    - Pressiona o pedal (CC 64 = 127) logo após o ataque das notas para sustentar a harmonia.
+    """
+    if log is None:
+        log = logging.getLogger("mid2mp3")
+
+    log.info("  🎹  [Equinox Pianos] Gerando automação inteligente de pedal de sustain (CC 64)...")
+    novo_midi = mido.MidiFile(type=midi_in.type, ticks_per_beat=midi_in.ticks_per_beat)
+    ticks_por_beat = midi_in.ticks_per_beat
+
+    for idx_trilha, trilha in enumerate(midi_in.tracks):
+        # Ignora trilha 0 e percussão
+        if idx_trilha == 0:
+            novo_midi.tracks.append(trilha)
+            continue
+
+        # 1. Converter eventos da trilha para ticks absolutos
+        eventos_abs = []
+        tick_atual = 0
+        for msg in trilha:
+            tick_atual += msg.time
+            eventos_abs.append([tick_atual, msg])
+
+        # 2. Encontrar todos os ticks onde novas notas iniciam por canal
+        notas_por_canal = {}
+        for tick_abs, msg in eventos_abs:
+            if msg.type == "note_on" and msg.velocity > 0:
+                ch = getattr(msg, "channel", 0)
+                if ch != 9:
+                    notas_por_canal.setdefault(ch, []).append(tick_abs)
+
+        pedais_para_inserir = []
+
+        for ch, ticks in notas_por_canal.items():
+            if not ticks:
+                continue
+            
+            # Agrupar ticks próximos (tolerância de 20 ticks) para identificar início de acordes
+            ticks.sort()
+            inicio_acordes = []
+            ultimo_tick = -9999
+            for t in ticks:
+                if t - ultimo_tick > 20:
+                    inicio_acordes.append(t)
+                    ultimo_tick = t
+
+            # Para cada início de acorde, aplicar o pedal
+            for i, t_acorde in enumerate(inicio_acordes):
+                # Libera o pedal no início do acorde (limpa a ressonância anterior)
+                pedais_para_inserir.append((t_acorde, mido.Message("control_change", channel=ch, control=64, value=0, time=0)))
+                
+                # Pressiona o pedal logo em seguida (atraso de 40 ticks ou 10% da nota)
+                t_press = t_acorde + 40
+                
+                # Evita passar do próximo acorde
+                if i + 1 < len(inicio_acordes):
+                    t_prox = inicio_acordes[i + 1]
+                    if t_press >= t_prox:
+                        t_press = t_acorde + (t_prox - t_acorde) // 2
+
+                pedais_para_inserir.append((t_press, mido.Message("control_change", channel=ch, control=64, value=127, time=0)))
+
+            # Zera o pedal no final da trilha
+            if inicio_acordes:
+                t_final = eventos_abs[-1][0]
+                pedais_para_inserir.append((t_final, mido.Message("control_change", channel=ch, control=64, value=0, time=0)))
+
+        if pedais_para_inserir:
+            # 3. Adicionar as mensagens de pedal
+            for tick_abs, msg in pedais_para_inserir:
+                eventos_abs.append([tick_abs, msg])
+
+            # 4. Reordenar e converter de volta para delta-time
+            eventos_abs.sort(key=lambda x: x[0])
+            nova_trilha = mido.MidiTrack()
+            nova_trilha.name = trilha.name
+            
+            tick_prev = 0
+            for tick_abs, msg in eventos_abs:
+                delta = max(0, tick_abs - tick_prev)
+                nova_trilha.append(msg.copy(time=delta))
+                tick_prev = tick_abs
+                
+            novo_midi.tracks.append(nova_trilha)
+        else:
+            novo_midi.tracks.append(trilha)
+
+    return novo_midi
+
+
+def aplicar_humanizacao_voicing_e_roll(
+    midi_in: mido.MidiFile,
+    log: logging.Logger | None = None,
+) -> mido.MidiFile:
+    """
+    Aplica Voicing (melodia mais alta, vozes internas mais suaves) e Micro-Roll (pequeno atraso
+    progressivo entre as notas de um mesmo acorde) para simular o toque de um pianista.
+    """
+    if log is None:
+        log = logging.getLogger("mid2mp3")
+
+    def mapear_velocidade(vel_original: int, v_min: int, v_max: int) -> int:
+        scale = (v_max - v_min) / 126.0
+        return int(v_min + (vel_original - 1) * scale)
+
+    log.info("  🎹  [Equinox Pianos] Humanizando dinâmica de vozes (voicing) e micro-atraso de acordes (roll)...")
+    novo_midi = mido.MidiFile(type=midi_in.type, ticks_per_beat=midi_in.ticks_per_beat)
+    import random
+    rng = random.Random(42)
+
+    for idx_trilha, trilha in enumerate(midi_in.tracks):
+        # Ignora trilha 0 e arpejo
+        eh_arpejo = "_arpejo" in (trilha.name or "").lower()
+        if idx_trilha == 0 or eh_arpejo:
+            novo_midi.tracks.append(trilha)
+            continue
+
+        # 1. Converter eventos da trilha para ticks absolutos
+        eventos_abs = []
+        tick_atual = 0
+        for msg in trilha:
+            tick_atual += msg.time
+            eventos_abs.append([tick_atual, msg])
+
+        # 2. Agrupar as notas que iniciam aproximadamente no mesmo tick (acordes)
+        notas_on_ativas = {}
+        acordes = {} # tick_abs -> list of indices in eventos_abs for note_on
+
+        for idx, (tick_abs, msg) in enumerate(eventos_abs):
+            if msg.type == "note_on" and msg.velocity > 0:
+                # Agrupa no tick aproximado (tolerância de 15 ticks)
+                tick_grupo = next((t for t in acordes if abs(t - tick_abs) <= 15), None)
+                if tick_grupo is None:
+                    tick_grupo = tick_abs
+                    acordes[tick_grupo] = []
+                acordes[tick_grupo].append(idx)
+                notas_on_ativas[msg.note] = idx
+
+        # 3. Aplicar Voicing e Roll para cada grupo de acorde
+        for tick_grupo, indices in acordes.items():
+            if len(indices) < 2:
+                # Nota isolada: aplica apenas variação dinâmica leve e sem roll
+                idx = indices[0]
+                msg = eventos_abs[idx][1]
+                var = rng.randint(-5, 5)
+                msg.velocity = max(1, min(127, msg.velocity + var))
+                continue
+
+            # Coletar notas e seus valores de nota para ordenar por altura
+            notas_grupo = []
+            for idx in indices:
+                msg = eventos_abs[idx][1]
+                notas_grupo.append((idx, msg.note, msg.velocity))
+
+            # Ordena por altura da nota (da mais grave para a mais aguda)
+            notas_grupo.sort(key=lambda x: x[1])
+
+            # Aplicar Voicing de acordo com equinox.md:
+            # - Soprano (mais aguda): 65 a 88
+            # - Baixo (mais grave): 50 a 72
+            # - Vozes internas (Contralto: 45 a 65, Tenor: 42 a 62)
+            num_notas = len(notas_grupo)
+            for pos, (idx, note, vel) in enumerate(notas_grupo):
+                msg = eventos_abs[idx][1]
+                if pos == num_notas - 1:
+                    # Soprano (mais aguda)
+                    nova_vel = mapear_velocidade(vel, 65, 88)
+                elif pos == 0:
+                    # Baixo (mais grave)
+                    nova_vel = mapear_velocidade(vel, 50, 72)
+                else:
+                    # Vozes internas
+                    if num_notas == 3:
+                        # Baixo (0), Contralto (1), Soprano (2)
+                        nova_vel = mapear_velocidade(vel, 45, 65)
+                    elif num_notas >= 4:
+                        # Baixo (0), Tenor (1), Contralto (2), Soprano (3)
+                        if pos == 1:
+                            nova_vel = mapear_velocidade(vel, 42, 62)
+                        else:
+                            nova_vel = mapear_velocidade(vel, 45, 65)
+                    else:
+                        nova_vel = mapear_velocidade(vel, 45, 65)
+                
+                # Adiciona variação humana aleatória leve (+/- 4)
+                nova_vel = max(1, min(127, nova_vel + rng.randint(-4, 4)))
+                msg.velocity = nova_vel
+
+            # Aplicar Micro-Roll:
+            # Atraso progressivo da nota mais grave para a mais aguda (8 ticks por nota de atraso)
+            for pos, (idx, note, vel) in enumerate(notas_grupo):
+                atraso = pos * 8
+                if atraso > 0:
+                    # Atrasar o note_on
+                    eventos_abs[idx][0] += atraso
+                    
+                    # Atrasar o correspondente note_off para manter a duração intacta
+                    msg_on = eventos_abs[idx][1]
+                    # Procuramos o note_off correspondente após este note_on
+                    for idx_off in range(idx + 1, len(eventos_abs)):
+                        tick_off, msg_off = eventos_abs[idx_off]
+                        if (msg_off.type == "note_off" or (msg_off.type == "note_on" and msg_off.velocity == 0)) and msg_off.note == msg_on.note:
+                            eventos_abs[idx_off][0] += atraso
+                            break
+
+        # 4. Reordenar e converter de volta para delta-time
+        eventos_abs.sort(key=lambda x: x[0])
+        nova_trilha = mido.MidiTrack()
+        nova_trilha.name = trilha.name
+        
+        tick_prev = 0
+        for tick_abs, msg in eventos_abs:
+            delta = max(0, tick_abs - tick_prev)
+            nova_trilha.append(msg.copy(time=delta))
+            tick_prev = tick_abs
+            
+        novo_midi.tracks.append(nova_trilha)
+
+    return novo_midi
+
+
+def aplicar_modelo_piano(
+    midi_in: mido.MidiFile,
+    modelo: str,
+    log: logging.Logger | None = None,
+) -> mido.MidiFile:
+    """
+    Aplica o modelo de piano selecionado (Steinway ou Yamaha, padrão ou estéreo L/R)
+    inserindo comandos de Bank Select (CC 0) e Program Change corretos.
+    """
+    if log is None:
+        log = logging.getLogger("mid2mp3")
+
+    modelos = {
+        "steinway":    {"bank": 0, "program": 0, "desc": "Steinway D Concert Grand"},
+        "yamaha":      {"bank": 0, "program": 1, "desc": "Yamaha C7 Concert Grand"},
+        "steinway_lr": {"bank": 1, "program": 0, "desc": "Steinway D (Concert Stereo L/R)"},
+        "yamaha_lr":   {"bank": 1, "program": 1, "desc": "Yamaha C7 (Concert Stereo L/R)"},
+    }
+
+    if modelo not in modelos:
+        log.warning("Modelo de piano '%s' desconhecido. Usando 'steinway_lr'.", modelo)
+        modelo = "steinway_lr"
+
+    config = modelos[modelo]
+    log.info("  🎹  [Equinox Pianos] Selecionando modelo: %s (Banco %d, Programa %d)...", 
+             config["desc"], config["bank"], config["program"])
+
+    novo_midi = mido.MidiFile(type=midi_in.type, ticks_per_beat=midi_in.ticks_per_beat)
+
+    for idx_trilha, trilha in enumerate(midi_in.tracks):
+        # Trilha 0 (tempo) -> intocada
+        if idx_trilha == 0:
+            novo_midi.tracks.append(trilha)
+            continue
+
+        nova_trilha = mido.MidiTrack()
+        nova_trilha.name = trilha.name
+        tem_program_change = False
+        canais_vistos = set()
+
+        for msg in trilha:
+            if hasattr(msg, "channel") and msg.channel == 9:
+                nova_trilha.append(msg)
+            elif msg.type == "program_change":
+                ch = msg.channel
+                # Insere Bank Select (CC 0) antes do program change para mudar o banco no FluidSynth
+                nova_trilha.append(mido.Message("control_change", channel=ch, control=0, value=config["bank"], time=0))
+                nova_trilha.append(msg.copy(program=config["program"]))
+                canais_vistos.add(ch)
+                tem_program_change = True
+            else:
+                if (
+                    not tem_program_change
+                    and msg.type == "note_on"
+                    and hasattr(msg, "channel")
+                    and msg.channel != 9
+                    and msg.channel not in canais_vistos
+                ):
+                    ch = msg.channel
+                    # Injeta Bank Select + Program Change antes da primeira nota
+                    nova_trilha.append(mido.Message("control_change", channel=ch, control=0, value=config["bank"], time=0))
+                    nova_trilha.append(mido.Message("program_change", channel=ch, program=config["program"], time=0))
+                    canais_vistos.add(ch)
+                nova_trilha.append(msg)
+
+        novo_midi.tracks.append(nova_trilha)
+
+    return novo_midi
+
+
+def aplicar_mapeamento_aaviolin(
+    midi_in: mido.MidiFile,
+    log: logging.Logger | None = None,
+) -> mido.MidiFile:
+    """
+    Mapeia os patches GM para os patches específicos do aaviolin.sf2 (0 a 7).
+    Analisa a velocidade/duração das notas para escolher entre:
+    - 0: Violin (Standard)
+    - 1: Fast Violin (Notas rápidas)
+    - 3: Slow Violin (Notas longas com vibrato natural)
+    """
+    if log is None:
+        log = logging.getLogger("mid2mp3")
+
+    log.info("  🎻  [AAViolin] Mapeando instrumentos para articulações (Fast/Slow/Standard)...")
+    novo_midi = mido.MidiFile(type=midi_in.type, ticks_per_beat=midi_in.ticks_per_beat)
+    ticks_por_beat = midi_in.ticks_per_beat
+
+    for idx_trilha, trilha in enumerate(midi_in.tracks):
+        # Trilha 0 (tempo) -> intocada
+        if idx_trilha == 0:
+            novo_midi.tracks.append(trilha)
+            continue
+
+        total_notas = 0
+        notas_curtas = 0
+        notas_longas = 0
+        
+        # Para calcular durações, precisamos acumular os delta-times
+        tick_acumulado = 0
+        notas_ativas = {}
+        for msg in trilha:
+            tick_acumulado += msg.time
+            if msg.type == "note_on" and msg.velocity > 0:
+                notas_ativas[msg.note] = tick_acumulado
+            elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
+                if msg.note in notas_ativas:
+                    t_on = notas_ativas.pop(msg.note)
+                    duracao = tick_acumulado - t_on
+                    total_notas += 1
+                    if duracao < ticks_por_beat * 0.5:
+                        notas_curtas += 1
+                    elif duracao > ticks_por_beat * 1.2:
+                        notas_longas += 1
+
+        # Escolher o preset do AAViolin com base na predominância
+        preset_escolhido = 0 # Violin Standard
+        if total_notas > 0:
+            pct_curtas = notas_curtas / total_notas
+            pct_longas = notas_longas / total_notas
+            if pct_curtas > 0.5:
+                preset_escolhido = 1 # Fast Violin
+                log.debug("    Trilha %d: predominância de notas rápidas (%.1f%%) -> Fast Violin (preset 1)", idx_trilha, pct_curtas * 100)
+            elif pct_longas > 0.4:
+                preset_escolhido = 3 # Slow Violin
+                log.debug("    Trilha %d: predominância de notas locais/longas (%.1f%%) -> Slow Violin (preset 3)", idx_trilha, pct_longas * 100)
+            else:
+                log.debug("    Trilha %d: misto -> Standard Violin (preset 0)", idx_trilha)
+        
+        # Criar nova trilha substituindo os program_changes pelo preset escolhido
+        nova_trilha = mido.MidiTrack()
+        nova_trilha.name = trilha.name
+        tem_program_change = False
+        canais_vistos = set()
+
+        for msg in trilha:
+            if hasattr(msg, "channel") and msg.channel == 9:
+                nova_trilha.append(msg)
+            elif msg.type == "program_change":
+                nova_trilha.append(msg.copy(program=preset_escolhido))
+                canais_vistos.add(msg.channel)
+                tem_program_change = True
+            else:
+                if (
+                    not tem_program_change
+                    and msg.type == "note_on"
+                    and hasattr(msg, "channel")
+                    and msg.channel != 9
+                    and msg.channel not in canais_vistos
+                ):
+                    nova_trilha.append(
+                        mido.Message("program_change", channel=msg.channel,
+                                     program=preset_escolhido, time=0)
+                    )
+                    canais_vistos.add(msg.channel)
+                nova_trilha.append(msg)
+
+        novo_midi.tracks.append(nova_trilha)
+
+    return novo_midi
+
+
+def aplicar_vibrato_humanizado(
+    midi_in: mido.MidiFile,
+    log: logging.Logger | None = None,
+) -> mido.MidiFile:
+    """
+    Insere mensagens de Control Change (CC 1 - Modulation Wheel) para criar vibrato natural
+    de forma progressiva (delayed vibrato) em notas sustentadas.
+    """
+    if log is None:
+        log = logging.getLogger("mid2mp3")
+
+    log.info("  🎻  [AAViolin] Aplicando vibrato humanizado progressivo em notas sustentadas...")
+    novo_midi = mido.MidiFile(type=midi_in.type, ticks_per_beat=midi_in.ticks_per_beat)
+    ticks_por_beat = midi_in.ticks_per_beat
+    MIN_DURACAO_VIBRATO = int(ticks_por_beat * 0.75) # Apenas notas com duração >= 3/4 de tempo
+
+    for idx_trilha, trilha in enumerate(midi_in.tracks):
+        # Ignora trilha 0 e arpejo
+        eh_arpejo = "_arpejo" in (trilha.name or "").lower()
+        if idx_trilha == 0 or eh_arpejo:
+            novo_midi.tracks.append(trilha)
+            continue
+
+        # 1. Converter eventos da trilha para ticks absolutos
+        eventos_abs = []
+        tick_atual = 0
+        for msg in trilha:
+            tick_atual += msg.time
+            eventos_abs.append([tick_atual, msg])
+
+        # 2. Identificar notas ativas e suas durações
+        notas_ativas = {} # note -> (tick_on, index_on, channel)
+        vibratos_para_inserir = [] # list of (tick_abs, msg)
+
+        for i, ev in enumerate(eventos_abs):
+            tick_abs, msg = ev
+            if msg.type == "note_on" and msg.velocity > 0:
+                ch = getattr(msg, "channel", 0)
+                if ch != 9: # Ignora percussão
+                    notas_ativas[msg.note] = (tick_abs, i, ch)
+            elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
+                if msg.note in notas_ativas:
+                    t_on, idx_on, ch = notas_ativas.pop(msg.note)
+                    duracao = tick_abs - t_on
+                    
+                    if duracao >= MIN_DURACAO_VIBRATO:
+                        # Criar curvas de vibrato progressivo (Modulation Wheel CC 1)
+                        t_start = t_on
+                        t_end = tick_abs
+                        
+                        vibratos_para_inserir.append((t_start, mido.Message("control_change", channel=ch, control=1, value=0, time=0)))
+                        
+                        t_ramp1 = t_start + int(duracao * 0.15)
+                        vibratos_para_inserir.append((t_ramp1, mido.Message("control_change", channel=ch, control=1, value=15, time=0)))
+                        
+                        t_ramp2 = t_start + int(duracao * 0.30)
+                        vibratos_para_inserir.append((t_ramp2, mido.Message("control_change", channel=ch, control=1, value=45, time=0)))
+                        
+                        t_ramp3 = t_start + int(duracao * 0.45)
+                        vibratos_para_inserir.append((t_ramp3, mido.Message("control_change", channel=ch, control=1, value=65, time=0)))
+                        
+                        t_fade = t_end - max(5, int(duracao * 0.05))
+                        vibratos_para_inserir.append((t_fade, mido.Message("control_change", channel=ch, control=1, value=0, time=0)))
+
+        if vibratos_para_inserir:
+            # 3. Adicionar as mensagens de vibrato aos eventos absolutos
+            for tick_abs, msg in vibratos_para_inserir:
+                eventos_abs.append([tick_abs, msg])
+
+            # 4. Reordenar todos os eventos por tick absoluto
+            eventos_abs.sort(key=lambda x: x[0])
+
+            # 5. Converter de volta para delta-time
+            nova_trilha = mido.MidiTrack()
+            nova_trilha.name = trilha.name
+            
+            tick_prev = 0
+            for tick_abs, msg in eventos_abs:
+                delta = max(0, tick_abs - tick_prev)
+                nova_trilha.append(msg.copy(time=delta))
+                tick_prev = tick_abs
+                
+            novo_midi.tracks.append(nova_trilha)
+        else:
+            novo_midi.tracks.append(trilha)
+
+    return novo_midi
+
+
+def aplicar_mapeamento_crisis(
+    midi_in: mido.MidiFile,
+    modelo: str,
+    log: logging.Logger | None = None,
+) -> mido.MidiFile:
+    """
+    Aplica o mapeamento de bancos específicos do CrisisGeneralMidi301.sf2.
+    - 'expressiva' (Banco 1): usa as articulações lentas/expressivas.
+    - 'sinfonica' (Banco 2): usa as articulações alternativas/sinfônicas.
+    - 'padrao' (Banco 0): usa o banco GM padrão.
+    """
+    if log is None:
+        log = logging.getLogger("mid2mp3")
+
+    config_bancos = {
+        "padrao": 0,
+        "expressiva": 1,
+        "sinfonica": 2,
+    }
+
+    if modelo not in config_bancos:
+        log.warning("Modelo do Crisis '%s' desconhecido. Usando 'expressiva'.", modelo)
+        modelo = "expressiva"
+
+    target_bank = config_bancos[modelo]
+    log.info("  🎹  [Crisis GM] Mapeando instrumentos para o modelo: %s (Banco %d)...", modelo, target_bank)
+
+    # Lista de programas suportados em cada banco do Crisis
+    # Banco 1 (Slow/Expressive):
+    banco_1_programs = {
+        14,  # Church Bell 01
+        29,  # Overdriven Gtr 18
+        30,  # Distorted Gtr 18
+        40,  # Slow Violin
+        41,  # Slow Viola
+        42,  # Cello Slow
+        43,  # Contrabass Slow
+        48,  # String Ensemble 3
+        52,  # Choir Aahs Slow
+        56,  # Trumpet Slow
+        57,  # Trombone Slow
+        58,  # Tuba Slow
+        60,  # French Horns Slow
+        61,  # Brass Section Slow
+        68,  # Oboe Slow
+        70,  # Bassoon Slow
+        71,  # Clarinet Slow
+        72,  # Piccolo Slow
+        75,  # Recorder Slow
+        78,  # Whistle Slow
+        79,  # Ocarina Slow
+    }
+
+    # Banco 2 (Alternative/Symphonic):
+    banco_2_programs = {
+        29,  # Overdriven 2Amp
+        30,  # Distorted 2Amp
+        40,  # Violin 2
+        41,  # Viola 2
+        42,  # Cello 2
+        43,  # Contrabass 2
+        52,  # Choir Aahs 2
+        56,  # Trumpet 2
+        57,  # Trombone 2
+        58,  # Tuba 2
+        60,  # French Horns 2
+        61,  # Brass Section 2
+        68,  # Oboe 2
+        70,  # Bassoon 2
+        71,  # Clarinet 2
+        72,  # Piccolo 2
+        73,  # Flute 2
+        78,  # Whistle Solo 01
+        79,  # Ocarina 2
+    }
+
+    novo_midi = mido.MidiFile(type=midi_in.type, ticks_per_beat=midi_in.ticks_per_beat)
+
+    for idx_trilha, trilha in enumerate(midi_in.tracks):
+        # Trilha 0 (tempo) -> intocada
+        if idx_trilha == 0:
+            novo_midi.tracks.append(trilha)
+            continue
+
+        nova_trilha = mido.MidiTrack()
+        nova_trilha.name = trilha.name
+        
+        # Guardamos o patch atual de cada canal para saber o que mapear
+        canal_patch = {}
+        
+        for msg in trilha:
+            if msg.type == "program_change":
+                ch = msg.channel
+                prog = msg.program
+                canal_patch[ch] = prog
+                
+                # Só mudamos o banco para canais que não sejam de percussão (9)
+                if ch != 9:
+                    use_bank = 0
+                    if target_bank == 1 and prog in banco_1_programs:
+                        use_bank = 1
+                    elif target_bank == 2 and prog in banco_2_programs:
+                        use_bank = 2
+                    
+                    if use_bank > 0:
+                        # Injeta Bank Select (CC 0)
+                        nova_trilha.append(mido.Message("control_change", channel=ch, control=0, value=use_bank, time=0))
+                
+                nova_trilha.append(msg)
+            else:
+                if msg.type == "note_on" and hasattr(msg, "channel") and msg.channel != 9:
+                    ch = msg.channel
+                    if ch not in canal_patch:
+                        canal_patch[ch] = 0
+                nova_trilha.append(msg)
+
+        novo_midi.tracks.append(nova_trilha)
+
+    return novo_midi
+
+
+def aplicar_expressao_sopros(
+    midi_in: mido.MidiFile,
+    log: logging.Logger | None = None,
+) -> mido.MidiFile:
+    """
+    Aplica dinâmica de expressão (CC 11) em trilhas de sopros (metais e palhetas/madeiras)
+    para criar crescendos/decrescendos e dar a sensação de respiração/articulação realista.
+    """
+    if log is None:
+        log = logging.getLogger("mid2mp3")
+
+    log.info("  💨  [Crisis GM] Aplicando dinâmica de expressão realista (CC 11) em sopros...")
+    novo_midi = mido.MidiFile(type=midi_in.type, ticks_per_beat=midi_in.ticks_per_beat)
+    ticks_por_beat = midi_in.ticks_per_beat
+
+    for idx_trilha, trilha in enumerate(midi_in.tracks):
+        # Ignora trilha 0 e percussão
+        if idx_trilha == 0:
+            novo_midi.tracks.append(trilha)
+            continue
+
+        # 1. Converter eventos da trilha para ticks absolutos
+        eventos_abs = []
+        tick_atual = 0
+        for msg in trilha:
+            tick_atual += msg.time
+            eventos_abs.append([tick_atual, msg])
+
+        # 2. Identificar se é uma trilha de sopro e qual o canal associado
+        eh_sopro = False
+        canal_sopro = None
+        for _, msg in eventos_abs:
+            if msg.type == "program_change":
+                prog = msg.program
+                ch = msg.channel
+                if ch != 9 and 56 <= prog <= 79:  # Brass, Reeds, Pipes
+                    eh_sopro = True
+                    canal_sopro = ch
+                    break
+
+        if not eh_sopro or canal_sopro is None:
+            # Não é sopro, passa a trilha intacta
+            novo_midi.tracks.append(trilha)
+            continue
+
+        # 3. Encontrar nota-ons e seus respectivos nota-offs para calcular durações
+        notas_ativas = {} # note_number -> tick_start
+        notas_duracao = [] # list of (tick_start, tick_end, duration)
+
+        for tick_abs, msg in eventos_abs:
+            if msg.type == "note_on" and msg.velocity > 0:
+                ch = getattr(msg, "channel", 0)
+                if ch == canal_sopro:
+                    notas_ativas[msg.note] = tick_abs
+            elif (msg.type == "note_off") or (msg.type == "note_on" and msg.velocity == 0):
+                ch = getattr(msg, "channel", 0)
+                if ch == canal_sopro:
+                    if msg.note in notas_ativas:
+                        t_start = notas_ativas.pop(msg.note)
+                        t_end = tick_abs
+                        dur = t_end - t_start
+                        if dur > 0:
+                            notas_duracao.append((t_start, t_end, dur))
+
+        # 4. Inserir eventos de CC 11
+        eventos_cc11 = []
+        limiar_ticks = int(ticks_por_beat * 0.75) # 3/4 de tempo
+
+        for t_start, t_end, dur in notas_duracao:
+            if dur >= limiar_ticks:
+                # Swell de expressão:
+                # - Início suave (85)
+                # - Pico de sopro (120) no primeiro quarto da nota
+                # - Sustentação natural (105) no terceiro quarto da nota
+                # - Decaimento no final antes da liberação (75)
+                eventos_cc11.append((t_start + 1, mido.Message("control_change", channel=canal_sopro, control=11, value=85, time=0)))
+                eventos_cc11.append((t_start + int(dur * 0.25), mido.Message("control_change", channel=canal_sopro, control=11, value=120, time=0)))
+                eventos_cc11.append((t_start + int(dur * 0.75), mido.Message("control_change", channel=canal_sopro, control=11, value=105, time=0)))
+                eventos_cc11.append((t_end - int(dur * 0.05), mido.Message("control_change", channel=canal_sopro, control=11, value=75, time=0)))
+
+        if eventos_cc11:
+            t_final = eventos_abs[-1][0]
+            eventos_cc11.append((t_final, mido.Message("control_change", channel=canal_sopro, control=11, value=127, time=0)))
+
+            for tick_abs, msg in eventos_cc11:
+                eventos_abs.append([tick_abs, msg])
+
+            eventos_abs.sort(key=lambda x: (x[0], 0 if x[1].type == "control_change" else 1))
+            nova_trilha = mido.MidiTrack()
+            nova_trilha.name = trilha.name
+
+            tick_prev = 0
+            for tick_abs, msg in eventos_abs:
+                delta = max(0, tick_abs - tick_prev)
+                nova_trilha.append(msg.copy(time=delta))
+                tick_prev = tick_abs
+
+            novo_midi.tracks.append(nova_trilha)
+        else:
+            novo_midi.tracks.append(trilha)
+
+    return novo_midi
+
+
+def aplicar_vibrato_strings_crisis(
+    midi_in: mido.MidiFile,
+    log: logging.Logger | None = None,
+) -> mido.MidiFile:
+    """
+    Aplica vibrato progressivo (CC 1 Modulation Wheel) em trilhas de cordas longas (violino, viola, cello, contrabaixo, ensemble)
+    para o Crisis General MIDI, simulando a expressão dramática de uma orquestra de cordas real.
+    """
+    if log is None:
+        log = logging.getLogger("mid2mp3")
+
+    log.info("  🎻  [Crisis GM] Aplicando vibrato progressivo (CC 1) nas cordas...")
+    novo_midi = mido.MidiFile(type=midi_in.type, ticks_per_beat=midi_in.ticks_per_beat)
+    ticks_por_beat = midi_in.ticks_per_beat
+    MIN_DURACAO_VIBRATO = int(ticks_por_beat * 0.75)
+
+    for idx_trilha, trilha in enumerate(midi_in.tracks):
+        eh_arpejo = "_arpejo" in (trilha.name or "").lower()
+        if idx_trilha == 0 or eh_arpejo:
+            novo_midi.tracks.append(trilha)
+            continue
+
+        eventos_abs = []
+        tick_atual = 0
+        for msg in trilha:
+            tick_atual += msg.time
+            eventos_abs.append([tick_atual, msg])
+
+        eh_cordas = False
+        canal_cordas = None
+        for _, msg in eventos_abs:
+            if msg.type == "program_change":
+                prog = msg.program
+                ch = msg.channel
+                if ch != 9 and (40 <= prog <= 43 or prog in (48, 49)):
+                    eh_cordas = True
+                    canal_cordas = ch
+                    break
+
+        if not eh_cordas or canal_cordas is None:
+            novo_midi.tracks.append(trilha)
+            continue
+
+        notas_ativas = {}
+        vibratos_para_inserir = []
+
+        for tick_abs, msg in eventos_abs:
+            if msg.type == "note_on" and msg.velocity > 0:
+                if msg.channel == canal_cordas:
+                    notas_ativas[msg.note] = tick_abs
+            elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
+                if msg.channel == canal_cordas:
+                    if msg.note in notas_ativas:
+                        t_on = notas_ativas.pop(msg.note)
+                        duracao = tick_abs - t_on
+                        
+                        if duracao >= MIN_DURACAO_VIBRATO:
+                            vibratos_para_inserir.append((t_on, mido.Message("control_change", channel=canal_cordas, control=1, value=0, time=0)))
+                            vibratos_para_inserir.append((t_on + int(duracao * 0.2), mido.Message("control_change", channel=canal_cordas, control=1, value=15, time=0)))
+                            vibratos_para_inserir.append((t_on + int(duracao * 0.4), mido.Message("control_change", channel=canal_cordas, control=1, value=40, time=0)))
+                            vibratos_para_inserir.append((t_on + int(duracao * 0.6), mido.Message("control_change", channel=canal_cordas, control=1, value=60, time=0)))
+                            vibratos_para_inserir.append((tick_abs - max(5, int(duracao * 0.05)), mido.Message("control_change", channel=canal_cordas, control=1, value=0, time=0)))
+
+        if vibratos_para_inserir:
+            t_final = eventos_abs[-1][0]
+            vibratos_para_inserir.append((t_final, mido.Message("control_change", channel=canal_cordas, control=1, value=0, time=0)))
+
+            for tick_abs, msg in vibratos_para_inserir:
+                eventos_abs.append([tick_abs, msg])
+
+            eventos_abs.sort(key=lambda x: (x[0], 0 if x[1].type == "control_change" else 1))
+
+            nova_trilha = mido.MidiTrack()
+            nova_trilha.name = trilha.name
+            
+            tick_prev = 0
+            for tick_abs, msg in eventos_abs:
+                delta = max(0, tick_abs - tick_prev)
+                nova_trilha.append(msg.copy(time=delta))
+                tick_prev = tick_abs
+                
+            novo_midi.tracks.append(nova_trilha)
+        else:
+            novo_midi.tracks.append(trilha)
+
+    return novo_midi
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Forçar patch GM em todas as trilhas
 # ─────────────────────────────────────────────────────────────────────────────
@@ -517,13 +1949,20 @@ GM_PATCHES: dict[str, int] = {
     "cordas":         48,
     "pizzicato":      45,
     "harpa":          46,
-    "orgao":          16,
+    "orgao":          16,   # Drawbar Organ (Hammond)
+    "orgao_igreja":   19,   # Church Organ  ← CCB / coral litúrgico
+    "orgao_percussao": 17,  # Percussive Organ
+    "orgao_rock":     18,   # Rock Organ
+    "orgao_reed":     20,   # Reed Organ (harmônio)
     "flauta":         73,
     "trompete":       56,
     "trombone":       57,
     "tuba":           58,
     "coro":           52,
     "orquestra":      48,
+    "quarteto_cordas": 48,  # Mapeia para Strings/Cordas para renderizar as vozes com cordas
+    "metais":         61,  # GM Brass Section
+    "brass":          61,  # GM Brass Section
 }
 
 
@@ -818,16 +2257,22 @@ def gerar_mp3(
     velocidade: float = 100.0,
     semitons: int = 0,
     log: logging.Logger | None = None,
+    usar_orquestra: bool = False,
+    humanizar_cordas: bool = False,
+    arranjo: str | None = None,
+    piano_modelo: str | None = None,
+    crisis_modelo: str | None = None,
 ) -> None:
     """
     Converte um arquivo MIDI em MP3 usando FluidSynth + FFmpeg.
 
     Ordem de processamento:
       1. semitons     -- transpoe notas
-      2. velocidade   -- ajusta BPM
-      3. patch_gm     -- forca instrumento GM
-      4. usar_arpejo  -- adiciona trilha de arpejo
-      5. desincronismo -- atrasa trilhas progressivamente
+      2. usar_orquestra -- cria arranjo de orquestra completa
+      3. velocidade   -- ajusta BPM
+      4. patch_gm     -- forca instrumento GM
+      5. usar_arpejo  -- adiciona trilha de arpejo
+      6. desincronismo -- atrasa trilhas progressivamente
     """
     if log is None:
         log = logging.getLogger("mid2mp3")
@@ -850,6 +2295,22 @@ def gerar_mp3(
                     midi_transp.save(str(mid_para_converter))
                 except Exception as e:
                     log.warning("  Falha ao transpor (%s); usando original.", e)
+
+        # ── Arranjo de Instrumentos ────────────────────────────────────────────
+        if usar_orquestra and not arranjo:
+            arranjo = "orquestra_completa"
+
+        if arranjo:
+            patch_gm = None  # Ignora patch_gm para não anular o arranjo
+            log.info("  🎻  Aplicando arranjo '%s' em: %s", arranjo, caminho_mid.name)
+            if not dry_run:
+                try:
+                    midi_base = mido.MidiFile(str(mid_para_converter))
+                    midi_arr = aplicar_arranjo(midi_base, arranjo, log)
+                    mid_para_converter = tmp_path / f"arr_{arranjo}_{caminho_mid.name}"
+                    midi_arr.save(str(mid_para_converter))
+                except Exception as e:
+                    log.warning("  Falha ao aplicar arranjo '%s' (%s); usando original.", arranjo, e)
 
         # ── Arpejo ────────────────────────────────────────────────────────
         if usar_arpejo:
@@ -905,14 +2366,61 @@ def gerar_mp3(
                 except Exception as e:
                     log.warning("  Falha ao aplicar desincronismo (%s); usando original.", e)
 
+        # ── AAViolin Specific Mappings and Vibrato ─────────────────────────
+        if "aaviolin" in caminho_sf2.stem.lower():
+            log.info("  🎻  [AAViolin] Detectado soundfont AAViolin. Aplicando otimizações...")
+            if not dry_run:
+                try:
+                    midi_base = mido.MidiFile(str(mid_para_converter))
+                    midi_aav = aplicar_mapeamento_aaviolin(midi_base, log)
+                    midi_aav = aplicar_vibrato_humanizado(midi_aav, log)
+                    mid_para_converter = tmp_path / f"aav_{caminho_mid.name}"
+                    midi_aav.save(str(mid_para_converter))
+                except Exception as e:
+                    log.warning("  Falha ao aplicar otimizações do AAViolin (%s); usando anterior.", e)
+
+        # ── Equinox Grand Pianos Specific Mappings and humanizations ────────
+        if "equinox" in caminho_sf2.stem.lower():
+            log.info("  🎹  [Equinox Pianos] Detectado soundfont Equinox Grand Pianos. Aplicando humanizações...")
+            if not dry_run:
+                try:
+                    midi_base = mido.MidiFile(str(mid_para_converter))
+                    # 1. Seleciona o modelo de piano
+                    midi_eq = aplicar_modelo_piano(midi_base, piano_modelo or "steinway_lr", log)
+                    # 2. Aplica voicing dinâmico e micro-atraso de acordes
+                    midi_eq = aplicar_humanizacao_voicing_e_roll(midi_eq, log)
+                    # 3. Aplica automação inteligente do pedal de sustain
+                    midi_eq = aplicar_pedal_sustain(midi_eq, log)
+                    mid_para_converter = tmp_path / f"eq_{caminho_mid.name}"
+                    midi_eq.save(str(mid_para_converter))
+                except Exception as e:
+                    log.warning("  Falha ao aplicar otimizações do Equinox Pianos (%s); usando anterior.", e)
+
+        # ── Crisis General Midi Specific Mappings and humanizations ────────
+        if "crisis" in caminho_sf2.stem.lower():
+            log.info("  🎹  [Crisis GM] Detectado soundfont Crisis General Midi. Aplicando humanizações...")
+            if not dry_run:
+                try:
+                    midi_base = mido.MidiFile(str(mid_para_converter))
+                    # 1. Mapeamento de canais/bancos baseado no modelo
+                    midi_cri = aplicar_mapeamento_crisis(midi_base, crisis_modelo or "expressiva", log)
+                    # 2. Dinâmica de sopros (expressão CC 11)
+                    midi_cri = aplicar_expressao_sopros(midi_cri, log)
+                    # 3. Vibrato de cordas (CC 1)
+                    midi_cri = aplicar_vibrato_strings_crisis(midi_cri, log)
+                    mid_para_converter = tmp_path / f"cri_{caminho_mid.name}"
+                    midi_cri.save(str(mid_para_converter))
+                except Exception as e:
+                    log.warning("  Falha ao aplicar otimizações do Crisis GM (%s); usando anterior.", e)
+
         # ── FluidSynth: MIDI → WAV ─────────────────────────────────────────
         arquivo_wav = tmp_path / (caminho_mp3.stem + ".wav")
         cmd_fluid = [
             "fluidsynth",
             "-F", str(arquivo_wav),
-            "-O", "s16",
+            "-O", "float",    # float 32-bit: headroom ilimitado, evita clipping em qualquer soundfont
             "-T", "wav",
-            "-g", "5",        # gain: default=0.2 é muito baixo; 5 = volume normal
+            "-g", "0.8",      # gain moderado; loudnorm normaliza o volume final de qualquer forma
             "--quiet",
             str(caminho_sf2),
             str(mid_para_converter),
@@ -928,7 +2436,12 @@ def gerar_mp3(
             "ffmpeg",
             "-y",
             "-i", str(arquivo_wav),
-            "-af", "loudnorm=I=-14:TP=-1:LRA=11",  # normalização de volume (EBU R128)
+            "-af",
+            # 1) alimiter: limitador de pico transparente operando em float
+            #    attack=1ms captura transientes rápidos; limit=0.891 ≈ -1 dBFS
+            # 2) loudnorm: normaliza loudness para -14 LUFS (EBU R128), True Peak -1
+            "alimiter=level_in=1:level_out=1:limit=0.891:attack=1:release=50:level=false,"
+            "loudnorm=I=-14:TP=-1:LRA=11",
             "-q:a", "0",
             "-map_metadata", "-1",
             "-loglevel", "error",
@@ -998,7 +2511,8 @@ def cmd_opcoes():
     print("┌─ --arpejo  (adiciona trilha de arpejo na voz mais grave)")
     print("│  --estilo-arpejo:")
     estilos = {
-        "ascendente" : "grave → agudo (padrão)",
+        "sacro"      : "quatro vozes (SATB) inteligente (padrão)",
+        "ascendente" : "grave → agudo",
         "descendente": "agudo → grave",
         "alternado"  : "ascendente nos compassos pares, descendente nos ímpares",
     }
@@ -1055,7 +2569,7 @@ def cmd_opcoes():
     print(f"│    --instrumento caixa_de_musica \\")      # força patch GM (nome)
     print(f"│    --patch-numero 9 \\")                   # ou patch direto 0-127
     print(f"│    --arpejo \\")                           # ativa arpejo no baixo
-    print(f"│    --estilo-arpejo ascendente \\")         # ascendente|descendente|alternado
+    print(f"│    --estilo-arpejo sacro \\")              # sacro|ascendente|descendente|alternado
     print(f"│    --desincronismo \\")                    # ativa desync por nota
     print(f"│    --delay-faixa 0.1 \\")                 # valor base do desync (s)
     print(f"│    --velocidade 100 \\")                   # % da velocidade (80=lento, 120=rápido)
@@ -1141,17 +2655,29 @@ def cmd_processar(
     semitons: int,
     reiniciar: bool,
     log: logging.Logger,
+    usar_orquestra: bool = False,
+    humanizar_cordas: bool = False,
+    arranjo: str | None = None,
+    piano_modelo: str | None = None,
+    crisis_modelo: str | None = None,
 ):
     if reiniciar:
         log.info("⚠  Reiniciando progresso para o formato '%s'…", formato)
         reiniciar_banco(conn, formato)
 
+    if usar_orquestra and not arranjo:
+        arranjo = "orquestra_completa"
+
+    sufixo_arranjo = f"_arranjo_{arranjo}" if arranjo else ""
+    sufixo_humanizar = "_humanizado" if humanizar_cordas else ""
     sufixo_arpejo = f"_arpejo_{estilo_arpejo}" if usar_arpejo else ""
     sufixo_desync = f"_desync{delay_desincronismo:.2f}s".replace('.', '') if delay_desincronismo > 0 else ""
     sufixo_patch  = f"_patch{patch_gm}" if patch_gm is not None else ""
     sufixo_vel    = f"_vel{int(velocidade)}pct" if velocidade != 100.0 else ""
     sufixo_semi   = f"_semi{semitons:+d}" if semitons != 0 else ""
-    pasta_saida = OUTPUT_DIR / f"{formato}{sufixo_arpejo}{sufixo_desync}{sufixo_patch}{sufixo_vel}{sufixo_semi}"
+    sufixo_piano  = f"_piano_{piano_modelo}" if (piano_modelo and "equinox" in formato.lower()) else ""
+    sufixo_crisis = f"_crisis_{crisis_modelo}" if (crisis_modelo and "crisis" in formato.lower()) else ""
+    pasta_saida = OUTPUT_DIR / f"{formato}{sufixo_arranjo}{sufixo_humanizar}{sufixo_arpejo}{sufixo_desync}{sufixo_patch}{sufixo_vel}{sufixo_semi}{sufixo_piano}{sufixo_crisis}"
 
     total = len(midis)
     concluidos = 0
@@ -1160,7 +2686,12 @@ def cmd_processar(
 
     for idx, caminho_mid in enumerate(midis, 1):
         nome_mid = caminho_mid.name
-        nome_mp3 = caminho_mid.stem + f"_{formato}{sufixo_arpejo}{sufixo_desync}{sufixo_patch}{sufixo_vel}{sufixo_semi}.mp3"
+        match_hino = re.search(r'\d+', caminho_mid.stem)
+        if match_hino:
+            num_hino = int(match_hino.group(0))
+            nome_mp3 = f"{num_hino:03d}.mp3"
+        else:
+            nome_mp3 = caminho_mid.stem + ".mp3"
         caminho_mp3 = pasta_saida / nome_mp3
 
         # Registra no banco se ainda não existe
@@ -1193,6 +2724,11 @@ def cmd_processar(
                 velocidade=velocidade,
                 semitons=semitons,
                 log=log,
+                usar_orquestra=usar_orquestra,
+                humanizar_cordas=humanizar_cordas,
+                arranjo=arranjo,
+                piano_modelo=piano_modelo,
+                crisis_modelo=crisis_modelo,
             )
             marcar_concluido(conn, nome_mid, formato, str(caminho_mp3))
             concluidos += 1
@@ -1204,6 +2740,10 @@ def cmd_processar(
     print()
     print(f"{'─'*50}")
     print(f"  Formato      : {formato}")
+    if arranjo:
+        print(f"  Arranjo      : {arranjo}")
+    if humanizar_cordas:
+        print("  Humanizado   : sim (legato, velocity e dinâmica)")
     if usar_arpejo:
         print(f"  Arpejo       : {estilo_arpejo}")
     if delay_desincronismo > 0:
@@ -1287,9 +2827,9 @@ def construir_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--estilo-arpejo",
         choices=ESTILOS_ARPEJO,
-        default="ascendente",
+        default="sacro",
         metavar="ESTILO",
-        help=f"Estilo do arpejo: {', '.join(ESTILOS_ARPEJO)}. Padrão: ascendente",
+        help=f"Estilo do arpejo: {', '.join(ESTILOS_ARPEJO)}. Padrão: sacro",
     )
 
     # Instrumento GM (sobrescreve os program_change do MIDI)
@@ -1308,6 +2848,36 @@ def construir_parser() -> argparse.ArgumentParser:
         metavar="0-127",
         help="Força um número de patch GM diretamente (0=Piano, 9=Caixa de Música, etc.). "
              "Sobreposto por --instrumento se ambos informados.",
+    )
+    parser.add_argument(
+        "--orquestra",
+        action="store_true",
+        help="Cria um arranjo de orquestra completa (cordas, metais, paletas e piano) multiplicando as vozes.",
+    )
+    parser.add_argument(
+        "--arranjo",
+        choices=["cordas", "metais", "orgaos", "orquestra_completa", "pianos", "classico_1", "sintetizado", "combinacao_3", "combinacao_4", "combinacao_5", "orgao_igreja", "orgao_reed", "orquestra_sacra_1", "orquestra_sacra_2", "orquestra_suave"],
+        metavar="TIPO",
+        help="Aplica um arranjo específico distribuindo as vozes.",
+    )
+    parser.add_argument(
+        "--piano-modelo",
+        choices=["steinway", "yamaha", "steinway_lr", "yamaha_lr"],
+        default="steinway_lr",
+        metavar="MODELO",
+        help="Seleciona o modelo de piano para Equinox Grand Pianos: steinway, yamaha, steinway_lr, yamaha_lr. Padrão: steinway_lr",
+    )
+    parser.add_argument(
+        "--crisis-modelo",
+        choices=["padrao", "expressiva", "sinfonica"],
+        default="expressiva",
+        metavar="MODELO",
+        help="Seleciona o modelo de orquestração para Crisis General Midi: padrao, expressiva, sinfonica. Padrão: expressiva",
+    )
+    parser.add_argument(
+        "--humanizar-cordas",
+        action="store_true",
+        help="Aplica humanização (micro-dinâmicas de velocity e legato) nas trilhas de cordas.",
     )
 
     # Desincronismo de trilhas
@@ -1458,7 +3028,14 @@ def main():
 
     # ── Resolver lista de MIDIs ────────────────────────────────────────────
     if args.mid:
-        caminho_especifico = MID_DIR / args.mid
+        path_arg = Path(args.mid)
+        if path_arg.exists():
+            caminho_especifico = path_arg
+        elif (MID_DIR / args.mid).exists():
+            caminho_especifico = MID_DIR / args.mid
+        else:
+            caminho_especifico = MID_DIR / args.mid
+        
         if not caminho_especifico.exists():
             log.error("Arquivo não encontrado: %s", caminho_especifico)
             sys.exit(1)
@@ -1485,14 +3062,22 @@ def main():
         patch_gm = max(0, min(127, args.patch_numero))
         log.info("Patch GM manual: %d", patch_gm)
 
-    log.info("mid2mp3 | Formato: %s | Arquivos: %d | Arpejo: %s%s | Desincronismo: %s | Instrumento: %s | Velocidade: %.0f%%",
+    arranjo = args.arranjo
+    if args.orquestra and not arranjo:
+        arranjo = "orquestra_completa"
+
+    log.info("mid2mp3 | Formato: %s | Arquivos: %d | Arpejo: %s%s | Desincronismo: %s | Instrumento: %s | Velocidade: %.0f%% | Arranjo: %s | Modelo Piano: %s | Modelo Crisis: %s | Humanizado: %s",
              args.formato,
              len(midis),
              "sim" if args.arpejo else "não",
              f" ({args.estilo_arpejo})" if args.arpejo else "",
              f"{args.delay_faixa}s/faixa" if args.desincronismo else "não",
              f"patch {patch_gm}" if patch_gm is not None else "original",
-             args.velocidade)
+             args.velocidade,
+             arranjo if arranjo else "não",
+             args.piano_modelo,
+             args.crisis_modelo,
+             "sim" if args.humanizar_cordas else "não")
 
     if args.dry_run:
         log.info("⚠  Modo DRY-RUN ativado — nenhum arquivo será gerado.")
@@ -1512,6 +3097,11 @@ def main():
         semitons=args.semitons,
         reiniciar=args.reiniciar,
         log=log,
+        usar_orquestra=args.orquestra,
+        humanizar_cordas=args.humanizar_cordas,
+        arranjo=arranjo,
+        piano_modelo=args.piano_modelo,
+        crisis_modelo=args.crisis_modelo,
     )
 
     conn.close()
