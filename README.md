@@ -467,3 +467,39 @@ O projeto conta com um painel administrativo baseado em Flask (localizado no rep
 - A transposição (`--semitons`) preserva a percussão (canal MIDI 9)
 - Notas que ultrapassem o limite MIDI (0–127) após transposição são descartadas com aviso
 - O volume de saída é normalizado automaticamente (EBU R128, −14 LUFS)
+
+# Boas configurações
+orgão que ficou bom:
+03_orgao_eletronico_drawbar
+{
+    "mid_original": "003- Faz-nos ouvir Tua voz.mid",
+    "preset": "03_orgao_eletronico_drawbar",
+    "soundfont": "Timbres_of_Heaven.sf2",
+    "seed": 42,
+    "humanizacao": true,
+    "arpejo_ativado": false,
+    "vozes_satb": {
+        "soprano": 1,
+        "contralto": 2,
+        "tenor": 3,
+        "baixo": 4
+    },
+    "data_processamento": "2026-06-13T00:35:25.613869"
+}
+
+05_orgao_ccb_celeste
+{
+    "mid_original": "003- Faz-nos ouvir Tua voz.mid",
+    "preset": "05_orgao_ccb_celeste",
+    "soundfont": "Timbres_of_Heaven.sf2",
+    "seed": 42,
+    "humanizacao": true,
+    "arpejo_ativado": false,
+    "vozes_satb": {
+        "soprano": 1,
+        "contralto": 2,
+        "tenor": 3,
+        "baixo": 4
+    },
+    "data_processamento": "2026-06-13T00:35:34.918800"
+}

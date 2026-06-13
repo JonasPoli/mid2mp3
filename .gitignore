@@ -10,12 +10,11 @@ build/
 .eggs/
 
 # ── Saída gerada ─────────────────────────────────────────────────────────────
-output/
+output*/
 
 # ── Banco de progresso ────────────────────────────────────────────────────────
-progresso.db
-progresso.db-shm
-progresso.db-wal
+progresso*.db*
+*.db*
 
 # ── SoundFonts (arquivos grandes — baixar manualmente) ────────────────────────
 soundfonts/*.sf2
@@ -26,6 +25,7 @@ soundfonts/*.sfz
 *.wav
 *.tmp
 tmp/
+scratch/
 
 # ── macOS ─────────────────────────────────────────────────────────────────────
 .DS_Store
