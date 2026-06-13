@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# todas_versoes4.sh -- Gera MP3 nos 12 presets de Metais (Brass) Sacros
+# todas_versoes4.sh -- Gera MP3 nos 11 presets de Orquestra Sacra (v4)
 #
 # Uso:
 #   ./todas_versoes4.sh "003- Faz-nos ouvir Tua voz.mid"
@@ -46,24 +46,23 @@ BASENAME_MID=$(basename "$MIDI_PATH")
 STEM="${BASENAME_MID%.*}"
 SAIDA_BASE_DIR="$SCRIPT_DIR/output4/$STEM"
 
-# Lista completa dos 12 presets de Metais
+# Lista completa dos 11 presets de Orquestra (docs/orchestra.md)
 PRESETS=(
-    "01_met_quarteto_tradicional"
-    "02_met_metais_suaves"
-    "03_met_solene_cheio"
-    "04_met_mais_encorpado"
-    "05_met_estilo_banda"
-    "06_met_hino_calmo"
-    "07_met_hino_forte"
-    "08_met_som_mais_nobre"
-    "09_met_gravacao_suave"
-    "10_met_metais_graves"
-    "11_met_clima_sacro"
-    "12_met_estudo_vozes"
+    "01_orq_ccb_classica"
+    "02_orq_orgao_fundo"
+    "03_orq_metais_suaves"
+    "04_orq_cordas_completas"
+    "05_orq_madeiras_delicadas"
+    "06_orq_hinario_cantado"
+    "07_orq_piano_leve"
+    "08_orq_orgao_metais"
+    "09_orq_grande"
+    "10_orq_tradicional_banda"
+    "11_orq_favorita_ia"
 )
 
 echo "=================================================================="
-echo "   mid2mp3 v4 -- Processamento nos Presets de Metais"
+echo "   mid2mp3 v4 -- Processamento nos Presets de Orquestra"
 echo "=================================================================="
 echo "  MIDI    : $MIDI_PATH"
 echo "  Saída   : $SAIDA_BASE_DIR"
@@ -104,7 +103,7 @@ done
 
 # -- Relatório Final -----------------------------------------------------------
 echo "=================================================================="
-echo "   Resumo do Processamento em Lote - Metais"
+echo "   Resumo do Processamento em Lote - Orquestra"
 echo "=================================================================="
 echo "  Pasta de saída: $SAIDA_BASE_DIR"
 echo "  Total com sucesso : ${#SUCESSOS[@]} de ${#PRESETS[@]}"

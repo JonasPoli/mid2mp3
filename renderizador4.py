@@ -398,8 +398,7 @@ def aplicar_humanizacao_v4(
     1. Micro-timing (delays por papel vocal) — Monotônicos/Interpolados por onsets para evitar notas comidas/gaps
     2. Velocities orgânicas variando por papel E por seção do hino:
          intro: mais suave; corpo: expressivo; final: diminuendo gradual
-    3. Micro-roll em acordes (B→T→A→S, offsets fixos)
-    4. Dinâmica de frase (curva parabólica: 90%→108%→82% por bloco de 2 compassos)
+    3. Dinâmica de frase (curva parabólica: 90%→108%→82% por bloco de 2 compassos) - APLICADO APENAS A PIANOS
     """
     log.info(f"🎻 Humanizando (v4, seed={seed})...")
     rng = random.Random(seed)
@@ -407,13 +406,15 @@ def aplicar_humanizacao_v4(
     tempo_us      = obter_tempo_midi(midi_in)
     ticks_por_beat = midi_in.ticks_per_beat
 
-    # Delays por papel (ms) — para a humanização v4 antiga
-    delays_cfg = {
-        "soprano":   (0.0, 10.0),   # melodia quase no tempo
-        "contralto": (6.0, 20.0),
-        "tenor":     (4.0, 16.0),
-        "baixo":     (0.0,  6.0),   # baixo ancora o ritmo
-    }
+    # Identifica se é piano para aplicar dinâmica de bloco/frase
+    is_piano = False
+    if "soundfont" in preset_cfg and ("piano" in preset_cfg["soundfont"].lower() or "equinox" in preset_cfg["soundfont"].lower()):
+        is_piano = True
+    elif "grupos" in preset_cfg:
+        for g in preset_cfg["grupos"].values():
+            if "soundfont" in g and ("piano" in g["soundfont"].lower() or "equinox" in g["soundfont"].lower()):
+                is_piano = True
+                break
 
     # Velocities por papel e seção
     vel_cfg: dict[str, dict[str, tuple[int, int]]] = {
@@ -422,9 +423,6 @@ def aplicar_humanizacao_v4(
         "tenor":     {"intro": (42, 56),  "corpo": (48, 66),  "final": (38, 54)},
         "baixo":     {"intro": (50, 65),  "corpo": (58, 76),  "final": (46, 63)},
     }
-
-    # Micro-roll: Baixo soa primeiro, Soprano por último
-    roll_ms = {"baixo": 0, "tenor": 7, "contralto": 13, "soprano": 19}
 
     # Escala global de velocity do preset
     vel_scale = preset_cfg.get("velocity_scale", 1.0)
@@ -436,11 +434,9 @@ def aplicar_humanizacao_v4(
             return "final"
         return "corpo"
 
-    limites_compassos = obter_limites_compassos(midi_in)
-    tipo_h = preset_cfg.get("humanizacao", "v4")
-
-    # Identificação de Onsets para delays contínuos/interpolados (evita notas comidas)
+    # 1. Coleta todos os ticks de início de notas (onsets) nas trilhas de vozes e eventos para detecção de frase
     onsets_set = {0}
+    todos_eventos_notas = []
     for idx_trilha, trilha in enumerate(midi_in.tracks):
         if idx_trilha == 0 or "arpejo" in (trilha.name or "").lower():
             continue
@@ -449,68 +445,122 @@ def aplicar_humanizacao_v4(
             tick_abs += msg.time
             if msg.type == "note_on" and msg.velocity > 0:
                 onsets_set.add(tick_abs)
-    onsets_set.add(obter_max_tick(midi_in))
+                todos_eventos_notas.append({"type": "note_on", "tick": tick_abs})
+            elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
+                todos_eventos_notas.append({"type": "note_off", "tick": tick_abs})
+    
+    max_tick = obter_max_tick(midi_in)
+    onsets_set.add(max_tick)
     onset_ticks = sorted(list(onsets_set))
 
-    # Gera delays limitados por slope (dD/ds <= 0.75) para cada onset e cada voz
-    delays_por_onset = []
-    prev_delays = {
-        "soprano": 0.0,
-        "contralto": 0.0,
-        "tenor": 0.0,
-        "baixo": 0.0
-    }
-    
-    ticks_por_seg = ticks_por_beat * 1_000_000.0 / tempo_us
-    opcoes_nova = [0.0, 0.005, 0.01, 0.02]
-
-    for idx, t in enumerate(onset_ticks):
-        if idx == 0:
-            cur_delays = {}
-            for papel_vocal in ["soprano", "contralto", "tenor", "baixo"]:
-                if tipo_h == "nova":
-                    cur_delays[papel_vocal] = rng.choice(opcoes_nova)
-                else:
-                    r_min, r_max = delays_cfg[papel_vocal]
-                    cur_delays[papel_vocal] = rng.uniform(r_min / 1000.0, r_max / 1000.0)
+    # Detectar fins de frase globais por silêncio
+    todos_eventos_notas.sort(key=lambda x: x["tick"])
+    silence_threshold = int(ticks_por_beat * 1.5)
+    phrase_ends = set()
+    ultima_nota_fim = 0
+    for i, ev in enumerate(todos_eventos_notas):
+        if ev["type"] == "note_on":
+            if ev["tick"] - ultima_nota_fim > silence_threshold and i > 0:
+                phrase_ends.add(ultima_nota_fim)
         else:
-            dt_ticks = t - onset_ticks[idx - 1]
-            ds = dt_ticks / ticks_por_seg
-            max_change = 0.75 * ds
-            
-            cur_delays = {}
-            for papel_vocal in ["soprano", "contralto", "tenor", "baixo"]:
-                d_prev = prev_delays[papel_vocal]
-                if tipo_h == "nova":
-                    target = rng.choice(opcoes_nova)
-                else:
-                    r_min, r_max = delays_cfg[papel_vocal]
-                    target = rng.uniform(r_min / 1000.0, r_max / 1000.0)
-                
-                min_val = d_prev - max_change
-                max_val = d_prev + max_change
-                clipped = max(min_val, min(max_val, target))
-                cur_delays[papel_vocal] = clipped
-                
-        delays_por_onset.append(cur_delays)
-        prev_delays = cur_delays
+            ultima_nota_fim = max(ultima_nota_fim, ev["tick"])
+    phrase_ends.add(ultima_nota_fim)
 
-    def obter_delay_interpolado(t_abs: int, papel_vocal: str) -> float:
-        if not onset_ticks:
-            return 0.0
-        if t_abs <= onset_ticks[0]:
-            return delays_por_onset[0][papel_vocal]
-        if t_abs >= onset_ticks[-1]:
-            return delays_por_onset[-1][papel_vocal]
+    def eh_fim_de_frase(t: int, onset_ticks: list[int], phrase_ends: set[int]) -> bool:
+        for pe in sorted(list(phrase_ends)):
+            if pe >= t:
+                outros_onsets = [ot for ot in onset_ticks if t < ot <= pe]
+                if not outros_onsets:
+                    return True
+                break
+        return False
+
+    humanizacao_tipo = preset_cfg.get("humanizacao", "padrao")
+    
+    if humanizacao_tipo == "nova":
+        limites_compassos = obter_limites_compassos(midi_in)
+        # Pré-computa os delays para cada compasso
+        delays_por_compasso = []
+        for _ in limites_compassos:
+            delays_base = [0.05, 0.1, 0.2]
+            rng.shuffle(delays_base)
+            delays_por_compasso.append({
+                "soprano": 0.0,
+                "contralto": delays_base[0],
+                "tenor": delays_base[1],
+                "baixo": delays_base[2]
+            })
+            
+        def obter_delay_interpolado(t_abs: int, papel_vocal: str) -> float:
+            if not limites_compassos:
+                return 0.0
+            import bisect
+            m_starts = [m[0] for m in limites_compassos]
+            idx = bisect.bisect_right(m_starts, t_abs) - 1
+            idx = max(0, min(len(delays_por_compasso) - 1, idx))
+            return delays_por_compasso[idx][papel_vocal]
+    else:
+        # 2. Gera delays limitados por slope (dD/ds <= 0.75) para cada onset e cada voz
+        delays_por_onset = []
+        prev_delays = {
+            "soprano": 0.0,
+            "contralto": 0.0,
+            "tenor": 0.0,
+            "baixo": 0.0
+        }
         
-        import bisect
-        idx = bisect.bisect_right(onset_ticks, t_abs) - 1
-        t_start = onset_ticks[idx]
-        t_next = onset_ticks[idx + 1]
-        d_start = delays_por_onset[idx][papel_vocal]
-        d_next = delays_por_onset[idx + 1][papel_vocal]
+        ticks_por_seg = ticks_por_beat * 1_000_000.0 / tempo_us
         
-        return d_start + (d_next - d_start) * (t_abs - t_start) / (t_next - t_start)
+        for idx, t in enumerate(onset_ticks):
+            # Atraso aleatório de 0 a 150ms (0 a 0.15s) no corpo e 0 a 200ms (0 a 0.20s) em fim de frase para pianos solos.
+            # Para outros instrumentos (órgãos, orquestras, metais, synths, caixinha de música e híbridos),
+            # limitamos a no máximo 20ms (0.02s) para manter o sincronismo impecável.
+            if is_piano:
+                limite_delay = 0.20 if eh_fim_de_frase(t, onset_ticks, phrase_ends) else 0.15
+            else:
+                limite_delay = 0.02
+
+            if idx == 0:
+                cur_delays = {
+                    "soprano":   rng.uniform(0.0, limite_delay),
+                    "contralto": rng.uniform(0.0, limite_delay),
+                    "tenor":     rng.uniform(0.0, limite_delay),
+                    "baixo":     rng.uniform(0.0, limite_delay),
+                }
+            else:
+                dt_ticks = t - onset_ticks[idx - 1]
+                ds = dt_ticks / ticks_por_seg
+                max_change = 0.75 * ds
+                
+                cur_delays = {}
+                for papel_vocal in ["soprano", "contralto", "tenor", "baixo"]:
+                    d_prev = prev_delays[papel_vocal]
+                    target = rng.uniform(0.0, limite_delay)
+                    
+                    min_val = d_prev - max_change
+                    max_val = d_prev + max_change
+                    clipped = max(min_val, min(max_val, target))
+                    cur_delays[papel_vocal] = clipped
+                    
+            delays_por_onset.append(cur_delays)
+            prev_delays = cur_delays
+
+        def obter_delay_interpolado(t_abs: int, papel_vocal: str) -> float:
+            if not onset_ticks:
+                return 0.0
+            if t_abs <= onset_ticks[0]:
+                return delays_por_onset[0][papel_vocal]
+            if t_abs >= onset_ticks[-1]:
+                return delays_por_onset[-1][papel_vocal]
+            
+            import bisect
+            idx = bisect.bisect_right(onset_ticks, t_abs) - 1
+            t_start = onset_ticks[idx]
+            t_next = onset_ticks[idx + 1]
+            d_start = delays_por_onset[idx][papel_vocal]
+            d_next = delays_por_onset[idx + 1][papel_vocal]
+            
+            return d_start + (d_next - d_start) * (t_abs - t_start) / (t_next - t_start)
 
     novo_midi = mido.MidiFile(type=midi_in.type, ticks_per_beat=ticks_por_beat)
     idx_para_voz = {idx: voz for voz, idx in vozes.items()}
@@ -544,34 +594,27 @@ def aplicar_humanizacao_v4(
                 delay_ticks = ms_para_ticks(delay_sec * 1000.0, ticks_por_beat, tempo_us)
                 ev[0] = tick_abs + delay_ticks
 
-        # ── Passo 2: Micro-roll (apenas se tipo_h != "nova" — no nova o roll está embutido nos onsets do SATB de forma natural) ──
-        if tipo_h != "nova":
-            offset_ticks = ms_para_ticks(roll_ms.get(papel, 10), ticks_por_beat, tempo_us)
-            for ev in eventos_abs:
-                if ev[1].type in ("note_on", "note_off"):
-                    ev[0] = max(0, ev[0] + offset_ticks)
-
-        # ── Passo 3: Dinâmica de frase por blocos de 2 compassos ───────────
-        # Curva parabólica: início 90% → pico 108% no meio → final 82%
-        bloco_ticks = ticks_por_beat * 8
-        note_ons_sorted = sorted(
-            [ev for ev in eventos_abs if ev[1].type == "note_on" and ev[1].velocity > 0],
-            key=lambda x: x[0]
-        )
-        if note_ons_sorted:
-            t_cursor = note_ons_sorted[0][0]
-            t_fim_ev = note_ons_sorted[-1][0]
-            while t_cursor <= t_fim_ev:
-                t_bloco_fim = t_cursor + bloco_ticks
-                for ev in eventos_abs:
-                    tick_abs, msg = ev
-                    if (t_cursor <= tick_abs < t_bloco_fim
-                            and msg.type == "note_on" and msg.velocity > 0):
-                        pos_rel = (tick_abs - t_cursor) / bloco_ticks
-                        # Parábola com pico em ~55%: cresce suavemente e decai
-                        fator = 0.90 + 0.36 * pos_rel - 0.44 * (pos_rel ** 2)
-                        msg.velocity = max(1, min(127, int(msg.velocity * fator)))
-                t_cursor += bloco_ticks
+        # ── Passo 2: Dinâmica de frase por blocos de 2 compassos (Apenas para Pianos) ──
+        if is_piano:
+            bloco_ticks = ticks_por_beat * 8
+            note_ons_sorted = sorted(
+                [ev for ev in eventos_abs if ev[1].type == "note_on" and ev[1].velocity > 0],
+                key=lambda x: x[0]
+            )
+            if note_ons_sorted:
+                t_cursor = note_ons_sorted[0][0]
+                t_fim_ev = note_ons_sorted[-1][0]
+                while t_cursor <= t_fim_ev:
+                    t_bloco_fim = t_cursor + bloco_ticks
+                    for ev in eventos_abs:
+                        tick_abs, msg = ev
+                        if (t_cursor <= tick_abs < t_bloco_fim
+                                and msg.type == "note_on" and msg.velocity > 0):
+                            pos_rel = (tick_abs - t_cursor) / bloco_ticks
+                            # Parábola com pico em ~55%: cresce suavemente e decai
+                            fator = 0.90 + 0.36 * pos_rel - 0.44 * (pos_rel ** 2)
+                            msg.velocity = max(1, min(127, int(msg.velocity * fator)))
+                    t_cursor += bloco_ticks
 
         nova_trilha = para_trilha(eventos_abs)
         nova_trilha.name = trilha.name
@@ -708,42 +751,63 @@ def aplicar_expressao_vibrato(
             novo_midi.tracks.append(trilha)
             continue
 
-        novos_ccs: list[tuple[int, mido.Message]] = []
-        notas_ativas: dict[int, int] = {}
-
+        # Mapeia todos os intervalos de notas para detecção de legato/overlap
+        notas_eventos = []
         for tick_abs, msg in eventos_abs:
             if msg.type == "note_on" and msg.velocity > 0:
-                notas_ativas[msg.note] = tick_abs
+                notas_eventos.append({"type": "start", "tick": tick_abs, "note": msg.note})
             elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
-                if msg.note in notas_ativas:
-                    t_on = notas_ativas.pop(msg.note)
-                    duracao = tick_abs - t_on
+                notas_eventos.append({"type": "end", "tick": tick_abs, "note": msg.note})
+        
+        intervalos = []
+        notas_ativas_map = {}
+        for ev in sorted(notas_eventos, key=lambda x: x["tick"]):
+            if ev["type"] == "start":
+                notas_ativas_map[ev["note"]] = ev["tick"]
+            else:
+                if ev["note"] in notas_ativas_map:
+                    t_on = notas_ativas_map.pop(ev["note"])
+                    intervalos.append({"start": t_on, "end": ev["tick"], "note": ev["note"]})
+        intervalos.sort(key=lambda x: x["start"])
 
-                    if duracao >= limiar_vibrato:
-                        secao = obter_secao(t_on)
-                        v_s, v_p, v_sus, v_e = cc11_table[secao]
-
-                        if cc11:
-                            # 4 pontos de controle: início, pico (18%), sustain (82%), fim
-                            novos_ccs.append((t_on, mido.Message(
-                                "control_change", channel=canal, control=11, value=v_s, time=0)))
-                            novos_ccs.append((t_on + int(duracao * 0.18), mido.Message(
-                                "control_change", channel=canal, control=11, value=v_p, time=0)))
-                            novos_ccs.append((t_on + int(duracao * 0.82), mido.Message(
-                                "control_change", channel=canal, control=11, value=v_sus, time=0)))
-                            novos_ccs.append((max(t_on + 1, tick_abs - 4), mido.Message(
-                                "control_change", channel=canal, control=11, value=v_e, time=0)))
-
-                        if cc1:
-                            # Vibrato progressivo: começa sem vibrato, entra suavemente após 28%
-                            novos_ccs.append((t_on, mido.Message(
-                                "control_change", channel=canal, control=1, value=0, time=0)))
-                            novos_ccs.append((t_on + int(duracao * 0.28), mido.Message(
-                                "control_change", channel=canal, control=1, value=12, time=0)))
-                            novos_ccs.append((t_on + int(duracao * 0.58), mido.Message(
-                                "control_change", channel=canal, control=1, value=55, time=0)))
-                            novos_ccs.append((max(t_on + 1, tick_abs - 8), mido.Message(
-                                "control_change", channel=canal, control=1, value=0, time=0)))
+        novos_ccs: list[tuple[int, mido.Message]] = []
+        for i, intr in enumerate(intervalos):
+            t_on = intr["start"]
+            t_off = intr["end"]
+            duracao = t_off - t_on
+            
+            # Verifica se há uma nota começando logo em seguida
+            tem_proxima = False
+            if i + 1 < len(intervalos):
+                tem_proxima = (intervalos[i + 1]["start"] <= t_off + 50)
+            
+            if duracao >= limiar_vibrato:
+                secao = obter_secao(t_on)
+                v_s, v_p, v_sus, v_e = cc11_table[secao]
+                # Nota longa: aplica curva de expressão suave (usando valores da seção)
+                if cc11:
+                    # Inicia em v_s
+                    novos_ccs.append((t_on, mido.Message("control_change", channel=canal, control=11, value=v_s, time=0)))
+                    # Sobe para v_p no pico (18% da duração)
+                    novos_ccs.append((t_on + int(duracao * 0.18), mido.Message("control_change", channel=canal, control=11, value=v_p, time=0)))
+                    # Sustenta em v_sus (82% da duração)
+                    novos_ccs.append((t_on + int(duracao * 0.82), mido.Message("control_change", channel=canal, control=11, value=v_sus, time=0)))
+                    # Se não tem próxima nota logo em seguida, faz um fade-out para v_e
+                    if not tem_proxima:
+                        novos_ccs.append((max(t_on + 1, t_off - 4), mido.Message("control_change", channel=canal, control=11, value=v_e, time=0)))
+                
+                if cc1:
+                    # Vibrato progressivo
+                    novos_ccs.append((t_on, mido.Message("control_change", channel=canal, control=1, value=0, time=0)))
+                    novos_ccs.append((t_on + int(duracao * 0.28), mido.Message("control_change", channel=canal, control=1, value=12, time=0)))
+                    novos_ccs.append((t_on + int(duracao * 0.58), mido.Message("control_change", channel=canal, control=1, value=55, time=0)))
+                    novos_ccs.append((max(t_on + 1, t_off - 8), mido.Message("control_change", channel=canal, control=1, value=0, time=0)))
+            else:
+                # Nota curta: apenas garante reset de expressão para v_s da seção
+                if cc11:
+                    secao = obter_secao(t_on)
+                    v_s, _, _, _ = cc11_table[secao]
+                    novos_ccs.append((t_on, mido.Message("control_change", channel=canal, control=11, value=v_s, time=0)))
 
         for t_cc, msg_cc in novos_ccs:
             eventos_abs.append([t_cc, msg_cc])
@@ -1737,11 +1801,28 @@ def aplicar_orquestracao(
         trilha_remap.append(mido.Message("control_change", channel=canal, control=7,  value=cfg["vol"], time=0))
         trilha_remap.append(mido.Message("control_change", channel=canal, control=10, value=cfg["pan"], time=0))
 
+        # Copia notas e outros eventos remapeando para o canal correto (preserva CCs como expressão, pedal e vibrato)
+        time_acumulado = 0
         for msg in trilha:
-            if hasattr(msg, "channel") and msg.type not in ("program_change", "control_change"):
-                trilha_remap.append(msg.copy(channel=canal))
-            elif msg.type not in ("program_change", "control_change"):
-                trilha_remap.append(msg.copy())
+            time_acumulado += msg.time
+            
+            # Descarta program_change originais e CCs de volume (7), pan (10), bank (0)
+            deve_descartar = False
+            if msg.type == "program_change":
+                deve_descartar = True
+            elif msg.type == "control_change" and msg.control in (0, 7, 10):
+                deve_descartar = True
+            
+            if deve_descartar:
+                continue
+            
+            msg_copia = msg.copy()
+            msg_copia.time = time_acumulado
+            time_acumulado = 0
+            
+            if hasattr(msg_copia, "channel"):
+                msg_copia.channel = canal
+            trilha_remap.append(msg_copia)
 
         novo_midi.tracks.append(trilha_remap)
 
@@ -1767,11 +1848,26 @@ def aplicar_orquestracao(
                                            value=int(cfg["vol"] * 0.58), time=0))
             trilha_pad.append(mido.Message("control_change", channel=canal_pad, control=10,
                                            value=cfg["pan"], time=0))
+            time_acumulado = 0
             for msg in trilha_orig:
-                if hasattr(msg, "channel") and msg.type not in ("program_change", "control_change"):
-                    trilha_pad.append(msg.copy(channel=canal_pad))
-                elif msg.type not in ("program_change", "control_change"):
-                    trilha_pad.append(msg.copy())
+                time_acumulado += msg.time
+                
+                deve_descartar = False
+                if msg.type == "program_change":
+                    deve_descartar = True
+                elif msg.type == "control_change" and msg.control in (0, 7, 10):
+                    deve_descartar = True
+                    
+                if deve_descartar:
+                    continue
+                    
+                msg_copia = msg.copy()
+                msg_copia.time = time_acumulado
+                time_acumulado = 0
+                
+                if hasattr(msg_copia, "channel"):
+                    msg_copia.channel = canal_pad
+                trilha_pad.append(msg_copia)
             novo_midi.tracks.append(trilha_pad)
 
     return novo_midi, caminho_sf2
@@ -1873,11 +1969,26 @@ def renderizar_hibrido(
                 trilha_nova.append(mido.Message("control_change", channel=canal_local, control=7,  value=vol_grupo, time=0))
                 trilha_nova.append(mido.Message("control_change", channel=canal_local, control=10, value=pan, time=0))
 
+                time_acumulado = 0
                 for msg in trilha_orig:
-                    if hasattr(msg, "channel") and msg.type not in ("program_change", "control_change"):
-                        trilha_nova.append(msg.copy(channel=canal_local))
-                    elif msg.type not in ("program_change", "control_change"):
-                        trilha_nova.append(msg.copy())
+                    time_acumulado += msg.time
+                    
+                    deve_descartar = False
+                    if msg.type == "program_change":
+                        deve_descartar = True
+                    elif msg.type == "control_change" and msg.control in (0, 7, 10):
+                        deve_descartar = True
+                        
+                    if deve_descartar:
+                        continue
+                        
+                    msg_copia = msg.copy()
+                    msg_copia.time = time_acumulado
+                    time_acumulado = 0
+                    
+                    if hasattr(msg_copia, "channel"):
+                        msg_copia.channel = canal_local
+                    trilha_nova.append(msg_copia)
 
                 midi_grupo.tracks.append(trilha_nova)
                 canal_local += 1
@@ -2059,6 +2170,27 @@ def processar_midi(
 
         # 10. Salva JSON de parâmetros
         if salvar_json:
+            def limpar_para_json(obj):
+                if isinstance(obj, dict):
+                    return {k: limpar_para_json(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [limpar_para_json(x) for x in obj]
+                elif isinstance(obj, Path):
+                    return str(obj)
+                else:
+                    return obj
+
+            params_recebidos = {
+                "caminho_mid": caminho_mid,
+                "preset_nome": preset_nome,
+                "saida_dir": saida_dir,
+                "seed": seed,
+                "salvar_midi": salvar_midi,
+                "salvar_json": salvar_json,
+                "reiniciar": reiniciar,
+                "debug": debug,
+            }
+
             params = {
                 "geracao":          4,
                 "mid_original":     caminho_mid.name,
@@ -2075,9 +2207,11 @@ def processar_midi(
                 "vozes_satb":       vozes,
                 "estrutura_hino":   {k: [int(v[0]), int(v[1])] for k, v in estrutura.items()},
                 "data_processamento": datetime.now().isoformat(),
+                "parametros_recebidos": limpar_para_json(params_recebidos),
+                "configuracao_interna": limpar_para_json(preset_cfg)
             }
             with open(saida_dir / "parametros.json", "w", encoding="utf-8") as f:
-                json.dump(params, f, indent=4, ensure_ascii=False)
+                json.dump(limpar_para_json(params), f, indent=4, ensure_ascii=False)
             log.info("  💾 Parâmetros salvos em parametros.json")
 
         log.info(f"  ✅ Sucesso! MP3 em: {arquivo_mp3}")

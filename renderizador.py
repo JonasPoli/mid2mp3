@@ -2679,6 +2679,50 @@ def cmd_processar(
     sufixo_crisis = f"_crisis_{crisis_modelo}" if (crisis_modelo and "crisis" in formato.lower()) else ""
     pasta_saida = OUTPUT_DIR / f"{formato}{sufixo_arranjo}{sufixo_humanizar}{sufixo_arpejo}{sufixo_desync}{sufixo_patch}{sufixo_vel}{sufixo_semi}{sufixo_piano}{sufixo_crisis}"
 
+    if not dry_run:
+        pasta_saida.mkdir(parents=True, exist_ok=True)
+        import json
+        
+        def limpar_para_json(obj):
+            if isinstance(obj, dict):
+                return {k: limpar_para_json(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [limpar_para_json(x) for x in obj]
+            elif isinstance(obj, Path):
+                return str(obj)
+            else:
+                return obj
+
+        arquivo_json = pasta_saida / "parametros.json"
+        parametros = {
+            "geracao": 1,
+            "parametros_recebidos": {
+                "formato": formato,
+                "caminho_sf2": str(caminho_sf2),
+                "dry_run": dry_run,
+                "usar_arpejo": usar_arpejo,
+                "estilo_arpejo": estilo_arpejo,
+                "delay_desincronismo": delay_desincronismo,
+                "patch_gm": patch_gm,
+                "velocidade": velocidade,
+                "semitons": semitons,
+                "usar_orquestra": usar_orquestra,
+                "humanizar_cordas": humanizar_cordas,
+                "arranjo": arranjo,
+                "piano_modelo": piano_modelo,
+                "crisis_modelo": crisis_modelo,
+            },
+            "configuracao_interna": {
+                "soundfonts_disponiveis": {k: str(v) for k, v in SOUNDFONTS.items()},
+                "gm_patches": GM_PATCHES,
+                "estilos_arpejo_disponiveis": ESTILOS_ARPEJO
+            },
+            "data_processamento": datetime.now().isoformat()
+        }
+        with open(arquivo_json, "w", encoding="utf-8") as f_json:
+            json.dump(limpar_para_json(parametros), f_json, indent=4, ensure_ascii=False)
+        log.info("Parâmetros do processo salvos em parametros.json")
+
     total = len(midis)
     concluidos = 0
     pulados = 0

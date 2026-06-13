@@ -234,6 +234,10 @@ def aplicar_humanizacao(
     tempo_us = obter_tempo_midi(midi_in)
     ticks_por_beat = midi_in.ticks_per_beat
     is_piano = "piano" in preset.lower() or "equinox" in preset.lower()
+    is_pure_piano = preset in (
+        "01_piano_devocional", "02_piano_arpejado_suave", "03_equinox_grand", "38_equinox_sacro",
+        "27_eq_steinway_arpejado", "28_eq_yamaha_arpejado", "29_eq_steinway", "30_eq_yamaha"
+    )
 
     # Desvio de velocidade por papel SATB
     velocity_deltas = {
@@ -296,8 +300,13 @@ def aplicar_humanizacao(
     ticks_por_seg = ticks_por_beat * 1_000_000.0 / tempo_us
     
     for idx, t in enumerate(onset_ticks):
-        # Atraso aleatório de 0 a 150ms (0 a 0.15s) no corpo e 0 a 200ms (0 a 0.20s) em fim de frase
-        limite_delay = 0.20 if eh_fim_de_frase(t, onset_ticks, phrase_ends) else 0.15
+        # Atraso aleatório de 0 a 150ms (0 a 0.15s) no corpo e 0 a 200ms (0 a 0.20s) em fim de frase para pianos solos.
+        # Para outros instrumentos (órgãos, orquestras, metais, synths, caixinha de música e híbridos),
+        # limitamos a no máximo 20ms (0.02s) para manter o sincronismo impecável.
+        if is_pure_piano:
+            limite_delay = 0.20 if eh_fim_de_frase(t, onset_ticks, phrase_ends) else 0.15
+        else:
+            limite_delay = 0.02
 
         if idx == 0:
             cur_delays = {
@@ -507,6 +516,7 @@ def aplicar_expressao_e_vibrato(
 ) -> mido.MidiFile:
     """
     Aplica CC11 de expressão crescendo/decrescendo e vibrato progressivo (CC1) em notas longas.
+    Evita pumping/oscilação de volume fundindo as curvas de legato/overlapping e resetando CC11 para notas curtas.
     """
     log.info("🎻 Injetando curvas de Expressão (CC11) e Vibrato (CC1)...")
     novo_midi = mido.MidiFile(type=midi_in.type, ticks_per_beat=midi_in.ticks_per_beat)
@@ -540,34 +550,59 @@ def aplicar_expressao_e_vibrato(
             novo_midi.tracks.append(trilha)
             continue
             
-        novos_ccs = []
-
-        # Guarda note_on ativas para calcular duração
-        notas_ativas = {}
+        # Mapeia todos os intervalos de notas para detecção de legato/overlap
+        notas_eventos = []
         for tick_abs, msg in eventos_abs:
             if msg.type == "note_on" and msg.velocity > 0:
-                notas_ativas[msg.note] = tick_abs
+                notas_eventos.append({"type": "start", "tick": tick_abs, "note": msg.note})
             elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
-                if msg.note in notas_ativas:
-                    t_on = notas_ativas.pop(msg.note)
-                    duracao = tick_abs - t_on
-                    
-                    if duracao >= limiar_vibrato:
-                        # 1. CC11 Expressão (crescendo / decrescendo)
-                        if expressao_sopros:
-                            # 15% de crescendo, 70% sustenta, 15% de decrescendo
-                            novos_ccs.append((t_on, mido.Message("control_change", channel=canal, control=11, value=80, time=0)))
-                            novos_ccs.append((t_on + int(duracao * 0.15), mido.Message("control_change", channel=canal, control=11, value=115, time=0)))
-                            novos_ccs.append((t_on + int(duracao * 0.85), mido.Message("control_change", channel=canal, control=11, value=95, time=0)))
-                            novos_ccs.append((tick_abs - 5, mido.Message("control_change", channel=canal, control=11, value=65, time=0)))
+                notas_eventos.append({"type": "end", "tick": tick_abs, "note": msg.note})
+        
+        intervalos = []
+        notas_ativas_map = {}
+        for ev in sorted(notas_eventos, key=lambda x: x["tick"]):
+            if ev["type"] == "start":
+                notas_ativas_map[ev["note"]] = ev["tick"]
+            else:
+                if ev["note"] in notas_ativas_map:
+                    t_on = notas_ativas_map.pop(ev["note"])
+                    intervalos.append({"start": t_on, "end": ev["tick"], "note": ev["note"]})
+        intervalos.sort(key=lambda x: x["start"])
 
-                        # 2. CC1 Vibrato Progressivo
-                        if vibrato_strings:
-                            # Começa em zero, sobe gradativamente após 25% da duração
-                            novos_ccs.append((t_on, mido.Message("control_change", channel=canal, control=1, value=0, time=0)))
-                            novos_ccs.append((t_on + int(duracao * 0.25), mido.Message("control_change", channel=canal, control=1, value=10, time=0)))
-                            novos_ccs.append((t_on + int(duracao * 0.55), mido.Message("control_change", channel=canal, control=1, value=55, time=0)))
-                            novos_ccs.append((tick_abs - 10, mido.Message("control_change", channel=canal, control=1, value=0, time=0)))
+        novos_ccs = []
+        for i, intr in enumerate(intervalos):
+            t_on = intr["start"]
+            t_off = intr["end"]
+            duracao = t_off - t_on
+            
+            # Verifica se há uma nota começando logo em seguida
+            tem_proxima = False
+            if i + 1 < len(intervalos):
+                tem_proxima = (intervalos[i + 1]["start"] <= t_off + 50)
+            
+            if duracao >= limiar_vibrato:
+                # Nota longa: aplica curva de expressão muito suave e vibrato progressivo
+                if expressao_sopros:
+                    # Inicia em 100
+                    novos_ccs.append((t_on, mido.Message("control_change", channel=canal, control=11, value=100, time=0)))
+                    # Sobe para 108 no pico (15% da duração)
+                    novos_ccs.append((t_on + int(duracao * 0.15), mido.Message("control_change", channel=canal, control=11, value=108, time=0)))
+                    # Sustenta em 102 (85% da duração)
+                    novos_ccs.append((t_on + int(duracao * 0.85), mido.Message("control_change", channel=canal, control=11, value=102, time=0)))
+                    # Se não tem próxima nota logo em seguida, faz um fade-out suave para 75
+                    if not tem_proxima:
+                        novos_ccs.append((t_off - 5, mido.Message("control_change", channel=canal, control=11, value=75, time=0)))
+                
+                if vibrato_strings:
+                    # Vibrato progressivo
+                    novos_ccs.append((t_on, mido.Message("control_change", channel=canal, control=1, value=0, time=0)))
+                    novos_ccs.append((t_on + int(duracao * 0.25), mido.Message("control_change", channel=canal, control=1, value=10, time=0)))
+                    novos_ccs.append((t_on + int(duracao * 0.55), mido.Message("control_change", channel=canal, control=1, value=55, time=0)))
+                    novos_ccs.append((t_off - 10, mido.Message("control_change", channel=canal, control=1, value=0, time=0)))
+            else:
+                # Nota curta: apenas garante reset de expressão para 100 no início
+                if expressao_sopros:
+                    novos_ccs.append((t_on, mido.Message("control_change", channel=canal, control=11, value=100, time=0)))
 
         # Injeta CCs gerados
         for t_abs, msg_cc in novos_ccs:
@@ -853,7 +888,7 @@ def aplicar_arpejo_sacro_v2(
 # ─────────────────────────────────────────────────────────────────────────────
 PRESETS_CFG = {
     # Pianos
-    "piano_devocional": {
+    "01_piano_devocional": {
         "modo": "simples",
         "soundfont": "Equinox_Grand_Pianos.sf2",
         "vozes": {
@@ -865,7 +900,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.4", "gain": "0.8",
         "pedal": True, "expressao": False, "vibrato": False
     },
-    "piano_arpejado_suave": {
+    "02_piano_arpejado_suave": {
         "modo": "simples",
         "soundfont": "Equinox_Grand_Pianos.sf2",
         "vozes": {
@@ -877,7 +912,7 @@ PRESETS_CFG = {
         "arpejo": True, "reverb": "0.5", "gain": "0.8",
         "pedal": True, "expressao": False, "vibrato": False
     },
-    "equinox_grand": {
+    "03_equinox_grand": {
         "modo": "simples",
         "soundfont": "Equinox_Grand_Pianos.sf2",
         "vozes": {
@@ -891,7 +926,7 @@ PRESETS_CFG = {
     },
 
     # Caixinha de música
-    "musicbox_suave": {
+    "04_musicbox_suave": {
         "modo": "simples",
         "soundfont": "MusicBox.sf2",
         "vozes": {
@@ -905,7 +940,7 @@ PRESETS_CFG = {
     },
 
     # Órgãos Sacros (Geração 2 / todas_versoes2.sh)
-    "01_orgao_liturgico_timbres": {
+    "08_orgao_liturgico_timbres": {
         "modo": "simples",
         "soundfont": "Timbres_of_Heaven.sf2",
         "vozes": {
@@ -917,7 +952,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.4", "gain": "0.8",
         "pedal": False, "expressao": False, "vibrato": False
     },
-    "02_orgao_tradicional_crisis": {
+    "09_orgao_tradicional_crisis": {
         "modo": "simples",
         "soundfont": "CrisisGeneralMidi301.sf2",
         "vozes": {
@@ -929,7 +964,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.4", "gain": "0.8",
         "pedal": False, "expressao": False, "vibrato": False
     },
-    "03_orgao_eletronico_drawbar": {
+    "10_orgao_eletronico_drawbar": {
         "modo": "simples",
         "soundfont": "Timbres_of_Heaven.sf2",
         "vozes": {
@@ -941,7 +976,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.4", "gain": "0.8",
         "pedal": False, "expressao": False, "vibrato": False
     },
-    "04_orgao_suave_musescore": {
+    "11_orgao_suave_musescore": {
         "modo": "simples",
         "soundfont": "MuseScore_General.sf2",
         "vozes": {
@@ -953,7 +988,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.4", "gain": "0.8",
         "pedal": False, "expressao": False, "vibrato": False
     },
-    "05_orgao_ccb_celeste": {
+    "12_orgao_ccb_celeste": {
         "modo": "simples",
         "soundfont": "Timbres_of_Heaven.sf2",
         "vozes": {
@@ -965,7 +1000,7 @@ PRESETS_CFG = {
         "pad_strings": True, "arpejo": False, "reverb": "0.4", "gain": "0.8",
         "pedal": False, "expressao": False, "vibrato": False
     },
-    "06_orgao_ccb_misto": {
+    "13_orgao_ccb_misto": {
         "modo": "simples",
         "soundfont": "Timbres_of_Heaven.sf2",
         "vozes": {
@@ -977,7 +1012,7 @@ PRESETS_CFG = {
         "pad_strings": True, "arpejo": False, "reverb": "0.4", "gain": "0.8",
         "pedal": False, "expressao": False, "vibrato": False
     },
-    "07_orgao_pleno_majestoso": {
+    "14_orgao_pleno_majestoso": {
         "modo": "simples",
         "soundfont": "SGM-V2.01.sf2",
         "vozes": {
@@ -989,7 +1024,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.4", "gain": "0.8",
         "pedal": False, "expressao": False, "vibrato": False
     },
-    "08_orgao_pleno_arpejado": {
+    "15_orgao_pleno_arpejado": {
         "modo": "simples",
         "soundfont": "Timbres_of_Heaven.sf2",
         "vozes": {
@@ -1001,7 +1036,7 @@ PRESETS_CFG = {
         "arpejo": True, "reverb": "0.4", "gain": "0.8",
         "pedal": False, "expressao": False, "vibrato": False
     },
-    "orgao_sacro": {
+    "05_orgao_sacro": {
         "modo": "simples",
         "soundfont": "Timbres_of_Heaven.sf2",
         "vozes": {
@@ -1013,7 +1048,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.4", "gain": "0.8",
         "pedal": False, "expressao": False, "vibrato": False
     },
-    "timbres_heaven_suave": {
+    "06_timbres_heaven_suave": {
         "modo": "simples",
         "soundfont": "Timbres_of_Heaven.sf2",
         "vozes": {
@@ -1025,7 +1060,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.4", "gain": "0.8",
         "pedal": False, "expressao": False, "vibrato": False
     },
-    "generaluser_leve": {
+    "07_generaluser_leve": {
         "modo": "simples",
         "soundfont": "MuseScore_General.sf2",
         "vozes": {
@@ -1039,7 +1074,7 @@ PRESETS_CFG = {
     },
 
     # Geração 3 (Orquestra Sacra / docs/orchestra.md)
-    "01_orq_ccb_classica": {
+    "16_orq_ccb_classica": {
         "modo": "simples",
         "soundfont": "SGM-V2.01.sf2",
         "vozes": {
@@ -1051,7 +1086,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.50", "gain": "0.80",
         "pedal": False, "expressao": True, "vibrato": True
     },
-    "02_orq_orgao_fundo": {
+    "17_orq_orgao_fundo": {
         "modo": "hibrido",
         "grupos": {
             "orquestra": {
@@ -1072,7 +1107,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.55", "gain": "0.80",
         "pedal": False, "expressao": True, "vibrato": True
     },
-    "03_orq_metais_suaves": {
+    "18_orq_metais_suaves": {
         "modo": "simples",
         "soundfont": "SGM-V2.01.sf2",
         "vozes": {
@@ -1084,7 +1119,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.50", "gain": "0.80",
         "pedal": False, "expressao": True, "vibrato": False
     },
-    "04_orq_cordas_completas": {
+    "19_orq_cordas_completas": {
         "modo": "simples",
         "soundfont": "CrisisGeneralMidi301.sf2",
         "vozes": {
@@ -1096,7 +1131,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.55", "gain": "0.80",
         "pedal": False, "expressao": True, "vibrato": True
     },
-    "05_orq_madeiras_delicadas": {
+    "20_orq_madeiras_delicadas": {
         "modo": "simples",
         "soundfont": "SGM-V2.01.sf2",
         "vozes": {
@@ -1108,7 +1143,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.45", "gain": "0.80",
         "pedal": False, "expressao": True, "vibrato": True
     },
-    "06_orq_hinario_cantado": {
+    "21_orq_hinario_cantado": {
         "modo": "hibrido",
         "grupos": {
             "sopros_madeiras": {
@@ -1129,7 +1164,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.52", "gain": "0.80",
         "pedal": False, "expressao": True, "vibrato": True
     },
-    "07_orq_piano_leve": {
+    "22_orq_piano_leve": {
         "modo": "hibrido",
         "grupos": {
             "piano": {
@@ -1150,7 +1185,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.50", "gain": "0.80",
         "pedal": True, "expressao": True, "vibrato": True
     },
-    "08_orq_orgao_metais": {
+    "23_orq_orgao_metais": {
         "modo": "hibrido",
         "grupos": {
             "metais": {
@@ -1171,7 +1206,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.55", "gain": "0.80",
         "pedal": False, "expressao": True, "vibrato": False
     },
-    "09_orq_grande": {
+    "24_orq_grande": {
         "modo": "hibrido",
         "grupos": {
             "madeiras_metais": {
@@ -1192,7 +1227,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.55", "gain": "0.80",
         "pedal": False, "expressao": True, "vibrato": True
     },
-    "10_orq_tradicional_banda": {
+    "25_orq_tradicional_banda": {
         "modo": "simples",
         "soundfont": "SGM-V2.01.sf2",
         "vozes": {
@@ -1204,7 +1239,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.50", "gain": "0.80",
         "pedal": False, "expressao": True, "vibrato": False
     },
-    "11_orq_favorita_ia": {
+    "26_orq_favorita_ia": {
         "modo": "hibrido",
         "grupos": {
             "sopros": {
@@ -1227,7 +1262,7 @@ PRESETS_CFG = {
     },
 
     # Geração 1
-    "01_eq_steinway_arpejado": {
+    "27_eq_steinway_arpejado": {
         "modo": "simples",
         "soundfont": "Equinox_Grand_Pianos.sf2",
         "vozes": {
@@ -1239,7 +1274,7 @@ PRESETS_CFG = {
         "arpejo": True, "reverb": "0.4", "gain": "0.8",
         "pedal": True, "expressao": False, "vibrato": False
     },
-    "02_eq_yamaha_arpejado": {
+    "28_eq_yamaha_arpejado": {
         "modo": "simples",
         "soundfont": "Equinox_Grand_Pianos.sf2",
         "vozes": {
@@ -1251,7 +1286,7 @@ PRESETS_CFG = {
         "arpejo": True, "reverb": "0.4", "gain": "0.8",
         "pedal": True, "expressao": False, "vibrato": False
     },
-    "03_eq_steinway": {
+    "29_eq_steinway": {
         "modo": "simples",
         "soundfont": "Equinox_Grand_Pianos.sf2",
         "vozes": {
@@ -1263,7 +1298,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.4", "gain": "0.8",
         "pedal": True, "expressao": False, "vibrato": False
     },
-    "04_eq_yamaha": {
+    "30_eq_yamaha": {
         "modo": "simples",
         "soundfont": "Equinox_Grand_Pianos.sf2",
         "vozes": {
@@ -1275,7 +1310,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.4", "gain": "0.8",
         "pedal": True, "expressao": False, "vibrato": False
     },
-    "05_ms_orgao_igreja": {
+    "31_ms_orgao_igreja": {
         "modo": "simples",
         "soundfont": "MuseScore_General.sf2",
         "vozes": {
@@ -1287,7 +1322,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.4", "gain": "0.8",
         "pedal": False, "expressao": True, "vibrato": False
     },
-    "06_ms_orgao_reed": {
+    "32_ms_orgao_reed": {
         "modo": "simples",
         "soundfont": "MuseScore_General.sf2",
         "vozes": {
@@ -1299,7 +1334,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.4", "gain": "0.8",
         "pedal": False, "expressao": True, "vibrato": False
     },
-    "07_ms_orq_completa": {
+    "33_ms_orq_completa": {
         "modo": "simples",
         "soundfont": "MuseScore_General.sf2",
         "vozes": {
@@ -1311,7 +1346,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.5", "gain": "0.8",
         "pedal": False, "expressao": True, "vibrato": True
     },
-    "08_ms_orq_sacra_1": {
+    "34_ms_orq_sacra_1": {
         "modo": "simples",
         "soundfont": "MuseScore_General.sf2",
         "vozes": {
@@ -1323,7 +1358,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.5", "gain": "0.8",
         "pedal": False, "expressao": True, "vibrato": True
     },
-    "09_ms_orq_suave": {
+    "35_ms_orq_suave": {
         "modo": "simples",
         "soundfont": "MuseScore_General.sf2",
         "vozes": {
@@ -1335,7 +1370,7 @@ PRESETS_CFG = {
         "arpejo": False, "reverb": "0.5", "gain": "0.8",
         "pedal": False, "expressao": True, "vibrato": True
     },
-    "10_ms_sintetizado_arpejado": {
+    "36_ms_sintetizado_arpejado": {
         "modo": "simples",
         "soundfont": "MuseScore_General.sf2",
         "vozes": {
@@ -1347,7 +1382,7 @@ PRESETS_CFG = {
         "arpejo": True, "reverb": "0.4", "gain": "0.8",
         "pedal": False, "expressao": True, "vibrato": False
     },
-    "11_ms_sintetizado": {
+    "37_ms_sintetizado": {
         "modo": "simples",
         "soundfont": "MuseScore_General.sf2",
         "vozes": {
@@ -1361,7 +1396,7 @@ PRESETS_CFG = {
     },
 
     # Geração 4
-    "04_orquestra_completa": {
+    "41_orquestra_completa": {
         "modo": "simples",
         "soundfont": "CrisisGeneralMidi301.sf2",
         "vozes": {
@@ -1373,7 +1408,7 @@ PRESETS_CFG = {
         "pad_strings": True, "arpejo": False, "reverb": "0.50", "gain": "0.80",
         "pedal": False, "expressao": True, "vibrato": True
     },
-    "06_musicbox_arpejado": {
+    "43_musicbox_arpejado": {
         "modo": "simples",
         "soundfont": "MusicBox.sf2",
         "vozes": {
@@ -1384,6 +1419,316 @@ PRESETS_CFG = {
         },
         "arpejo": True, "reverb": "0.70", "gain": "0.65",
         "pedal": False, "expressao": False, "vibrato": False
+    },
+
+    # === PREMIUM v4 ===
+    "38_equinox_sacro": {
+        "modo": "simples",
+        "soundfont": "Equinox_Grand_Pianos.sf2",
+        "vozes": {
+            "soprano":   {"patch": 0, "pan": 68, "vol": 100, "canal": 0},
+            "contralto": {"patch": 0, "pan": 60, "vol": 80,  "canal": 1},
+            "tenor":     {"patch": 0, "pan": 58, "vol": 78,  "canal": 2},
+            "baixo":     {"patch": 0, "pan": 64, "vol": 90,  "canal": 3},
+        },
+        "pedal": True, "expressao": False, "vibrato": False,
+        "arpejo": True, "reverb": "0.50", "gain": "0.75"
+    },
+    "39_coro_e_orgao": {
+        "modo": "hibrido",
+        "grupos": {
+            "coro": {
+                "vozes": ["soprano", "contralto"],
+                "soundfont": "Mellotron.sf2",
+                "patches_especificos": {"soprano": 52, "contralto": 52},
+                "vol": 90,
+                "pan": {"soprano": 68, "contralto": 58},
+            },
+            "orgao": {
+                "vozes": ["tenor", "baixo"],
+                "soundfont": "Timbres_of_Heaven.sf2",
+                "patches_especificos": {"tenor": 19, "baixo": 19},
+                "vol": 88,
+                "pan": {"tenor": 50, "baixo": 64},
+            },
+        },
+        "pedal": False, "expressao": True, "vibrato": False,
+        "arpejo": False, "reverb": "0.50", "gain": "0.80"
+    },
+    "40_violino_e_piano": {
+        "modo": "hibrido",
+        "grupos": {
+            "violino": {
+                "vozes": ["soprano"],
+                "soundfont": "aaviolin.sf2",
+                "patches_especificos": {"soprano": 0},
+                "vol": 108,
+                "pan": {"soprano": 70},
+            },
+            "piano": {
+                "vozes": ["contralto", "tenor", "baixo"],
+                "soundfont": "Equinox_Grand_Pianos.sf2",
+                "patches_especificos": {"contralto": 0, "tenor": 0, "baixo": 0},
+                "vol": 82,
+                "pan": {"contralto": 58, "tenor": 54, "baixo": 64},
+            },
+        },
+        "pedal": True, "expressao": True, "vibrato": True,
+        "arpejo": False, "reverb": "0.45", "gain": "0.80"
+    },
+    "42_meditativo": {
+        "modo": "simples",
+        "soundfont": "MuseScore_General.sf2",
+        "vozes": {
+            "soprano":   {"patch": 0, "pan": 68, "vol": 82, "canal": 0},
+            "contralto": {"patch": 0, "pan": 60, "vol": 65, "canal": 1},
+            "tenor":     {"patch": 0, "pan": 58, "vol": 62, "canal": 2},
+            "baixo":     {"patch": 0, "pan": 64, "vol": 72, "canal": 3},
+        },
+        "pedal": True, "expressao": False, "vibrato": False,
+        "arpejo": True, "reverb": "0.65", "gain": "0.65"
+    },
+
+    # === ÓRGÃOS v4 ===
+    "44_orgao_igreja_musescore": {
+        "modo": "simples",
+        "soundfont": "MuseScore_General.sf2",
+        "vozes": {
+            "soprano":   {"patch": 19, "pan": 68, "vol": 95, "canal": 0},
+            "contralto": {"patch": 19, "pan": 60, "vol": 85, "canal": 1},
+            "tenor":     {"patch": 19, "pan": 58, "vol": 82, "canal": 2},
+            "baixo":     {"patch": 19, "pan": 64, "vol": 90, "canal": 3},
+        },
+        "pedal": False, "expressao": False, "vibrato": False,
+        "arpejo": False, "reverb": "0.55", "gain": "0.80"
+    },
+    "45_orgao_reed_musescore": {
+        "modo": "simples",
+        "soundfont": "MuseScore_General.sf2",
+        "vozes": {
+            "soprano":   {"patch": 20, "pan": 68, "vol": 92, "canal": 0},
+            "contralto": {"patch": 20, "pan": 60, "vol": 82, "canal": 1},
+            "tenor":     {"patch": 20, "pan": 58, "vol": 80, "canal": 2},
+            "baixo":     {"patch": 20, "pan": 64, "vol": 88, "canal": 3},
+        },
+        "pedal": False, "expressao": False, "vibrato": False,
+        "arpejo": False, "reverb": "0.50", "gain": "0.80"
+    },
+    "46_orgao_igreja_timbres": {
+        "modo": "simples",
+        "soundfont": "Timbres_of_Heaven.sf2",
+        "vozes": {
+            "soprano":   {"patch": 19, "pan": 68, "vol": 95, "canal": 0},
+            "contralto": {"patch": 19, "pan": 60, "vol": 85, "canal": 1},
+            "tenor":     {"patch": 19, "pan": 58, "vol": 82, "canal": 2},
+            "baixo":     {"patch": 19, "pan": 64, "vol": 90, "canal": 3},
+        },
+        "pedal": False, "expressao": False, "vibrato": False,
+        "arpejo": False, "reverb": "0.55", "gain": "0.80"
+    },
+    "47_orgao_reed_timbres": {
+        "modo": "simples",
+        "soundfont": "Timbres_of_Heaven.sf2",
+        "vozes": {
+            "soprano":   {"patch": 20, "pan": 68, "vol": 92, "canal": 0},
+            "contralto": {"patch": 20, "pan": 60, "vol": 82, "canal": 1},
+            "tenor":     {"patch": 20, "pan": 58, "vol": 80, "canal": 2},
+            "baixo":     {"patch": 20, "pan": 64, "vol": 88, "canal": 3},
+        },
+        "pedal": False, "expressao": False, "vibrato": False,
+        "arpejo": False, "reverb": "0.50", "gain": "0.80"
+    },
+    "48_orgao_igreja_crisis": {
+        "modo": "simples",
+        "soundfont": "CrisisGeneralMidi301.sf2",
+        "vozes": {
+            "soprano":   {"patch": 19, "pan": 68, "vol": 95, "canal": 0},
+            "contralto": {"patch": 19, "pan": 60, "vol": 85, "canal": 1},
+            "tenor":     {"patch": 19, "pan": 58, "vol": 82, "canal": 2},
+            "baixo":     {"patch": 19, "pan": 64, "vol": 90, "canal": 3},
+        },
+        "pedal": False, "expressao": False, "vibrato": False,
+        "arpejo": False, "reverb": "0.55", "gain": "0.80"
+    },
+    "49_orgao_igreja_sgm": {
+        "modo": "simples",
+        "soundfont": "SGM-V2.01.sf2",
+        "vozes": {
+            "soprano":   {"patch": 19, "pan": 68, "vol": 95, "canal": 0},
+            "contralto": {"patch": 19, "pan": 60, "vol": 85, "canal": 1},
+            "tenor":     {"patch": 19, "pan": 58, "vol": 82, "canal": 2},
+            "baixo":     {"patch": 19, "pan": 64, "vol": 90, "canal": 3},
+        },
+        "pedal": False, "expressao": False, "vibrato": False,
+        "arpejo": False, "reverb": "0.55", "gain": "0.80"
+    },
+    "50_orgao_misto_ccb": {
+        "modo": "hibrido",
+        "grupos": {
+            "soprano_tenor": {
+                "vozes": ["soprano", "tenor"],
+                "soundfont": "Timbres_of_Heaven.sf2",
+                "patches_especificos": {"soprano": 19, "tenor": 19},
+                "vol": 92,
+                "pan": {"soprano": 68, "tenor": 52},
+            },
+            "contralto_baixo": {
+                "vozes": ["contralto", "baixo"],
+                "soundfont": "MuseScore_General.sf2",
+                "patches_especificos": {"contralto": 19, "baixo": 19},
+                "vol": 88,
+                "pan": {"contralto": 58, "baixo": 64},
+            },
+        },
+        "pedal": False, "expressao": False, "vibrato": False,
+        "arpejo": False, "reverb": "0.55", "gain": "0.80"
+    },
+
+    # === METAIS v4 ===
+    "51_met_quarteto_tradicional": {
+        "modo": "simples",
+        "soundfont": "MuseScore_General.sf2",
+        "vozes": {
+            "soprano":   {"patch": 56, "pan": 68, "vol": 95, "canal": 0},
+            "contralto": {"patch": 60, "pan": 56, "vol": 85, "canal": 1},
+            "tenor":     {"patch": 57, "pan": 48, "vol": 82, "canal": 2},
+            "baixo":     {"patch": 58, "pan": 64, "vol": 88, "canal": 3},
+        },
+        "pedal": False, "expressao": True, "vibrato": False,
+        "arpejo": False, "reverb": "0.50", "gain": "0.80"
+    },
+    "52_met_metais_suaves": {
+        "modo": "simples",
+        "soundfont": "CrisisGeneralMidi301.sf2",
+        "vozes": {
+            "soprano":   {"patch": 59, "pan": 68, "vol": 90, "canal": 0},
+            "contralto": {"patch": 60, "pan": 56, "vol": 84, "canal": 1},
+            "tenor":     {"patch": 57, "pan": 48, "vol": 80, "canal": 2},
+            "baixo":     {"patch": 58, "pan": 64, "vol": 84, "canal": 3},
+        },
+        "pedal": False, "expressao": True, "vibrato": False,
+        "arpejo": False, "reverb": "0.55", "gain": "0.78"
+    },
+    "53_met_solene_cheio": {
+        "modo": "simples",
+        "soundfont": "CrisisGeneralMidi301.sf2",
+        "vozes": {
+            "soprano":   {"patch": 56, "pan": 68, "vol": 98, "canal": 0},
+            "contralto": {"patch": 60, "pan": 56, "vol": 88, "canal": 1},
+            "tenor":     {"patch": 57, "pan": 48, "vol": 85, "canal": 2},
+            "baixo":     {"patch": 58, "pan": 64, "vol": 90, "canal": 3},
+        },
+        "pedal": False, "expressao": True, "vibrato": False,
+        "arpejo": False, "reverb": "0.50", "gain": "0.82"
+    },
+    "54_met_mais_encorpado": {
+        "modo": "simples",
+        "soundfont": "Timbres_of_Heaven.sf2",
+        "vozes": {
+            "soprano":   {"patch": 59, "pan": 68, "vol": 94, "canal": 0},
+            "contralto": {"patch": 60, "pan": 56, "vol": 86, "canal": 1},
+            "tenor":     {"patch": 57, "pan": 48, "vol": 84, "canal": 2},
+            "baixo":     {"patch": 58, "pan": 64, "vol": 90, "canal": 3},
+        },
+        "pedal": False, "expressao": True, "vibrato": False,
+        "arpejo": False, "reverb": "0.50", "gain": "0.80"
+    },
+    "55_met_estilo_banda": {
+        "modo": "simples",
+        "soundfont": "MuseScore_General.sf2",
+        "vozes": {
+            "soprano":   {"patch": 56, "pan": 68, "vol": 96, "canal": 0},
+            "contralto": {"patch": 56, "pan": 58, "vol": 86, "canal": 1},
+            "tenor":     {"patch": 57, "pan": 48, "vol": 84, "canal": 2},
+            "baixo":     {"patch": 58, "pan": 64, "vol": 90, "canal": 3},
+        },
+        "pedal": False, "expressao": True, "vibrato": False,
+        "arpejo": False, "reverb": "0.45", "gain": "0.80"
+    },
+    "56_met_hino_calmo": {
+        "modo": "simples",
+        "soundfont": "MuseScore_General.sf2",
+        "vozes": {
+            "soprano":   {"patch": 59, "pan": 68, "vol": 88, "canal": 0},
+            "contralto": {"patch": 60, "pan": 56, "vol": 78, "canal": 1},
+            "tenor":     {"patch": 57, "pan": 48, "vol": 76, "canal": 2},
+            "baixo":     {"patch": 58, "pan": 64, "vol": 80, "canal": 3},
+        },
+        "pedal": False, "expressao": True, "vibrato": False,
+        "arpejo": False, "reverb": "0.55", "gain": "0.75"
+    },
+    "57_met_hino_forte": {
+        "modo": "simples",
+        "soundfont": "SGM-V2.01.sf2",
+        "vozes": {
+            "soprano":   {"patch": 56, "pan": 68, "vol": 100, "canal": 0},
+            "contralto": {"patch": 60, "pan": 56, "vol": 90,  "canal": 1},
+            "tenor":     {"patch": 57, "pan": 48, "vol": 88,  "canal": 2},
+            "baixo":     {"patch": 58, "pan": 64, "vol": 94,  "canal": 3},
+        },
+        "pedal": False, "expressao": True, "vibrato": False,
+        "arpejo": False, "reverb": "0.50", "gain": "0.82"
+    },
+    "58_met_som_mais_nobre": {
+        "modo": "simples",
+        "soundfont": "CrisisGeneralMidi301.sf2",
+        "vozes": {
+            "soprano":   {"patch": 59, "pan": 68, "vol": 92, "canal": 0},
+            "contralto": {"patch": 60, "pan": 56, "vol": 84, "canal": 1},
+            "tenor":     {"patch": 60, "pan": 48, "vol": 82, "canal": 2},
+            "baixo":     {"patch": 58, "pan": 64, "vol": 86, "canal": 3},
+        },
+        "pedal": False, "expressao": True, "vibrato": False,
+        "arpejo": False, "reverb": "0.50", "gain": "0.80"
+    },
+    "59_met_gravacao_suave": {
+        "modo": "simples",
+        "soundfont": "Timbres_of_Heaven.sf2",
+        "vozes": {
+            "soprano":   {"patch": 59, "pan": 68, "vol": 90, "canal": 0},
+            "contralto": {"patch": 60, "pan": 56, "vol": 82, "canal": 1},
+            "tenor":     {"patch": 57, "pan": 48, "vol": 80, "canal": 2},
+            "baixo":     {"patch": 58, "pan": 64, "vol": 84, "canal": 3},
+        },
+        "pedal": False, "expressao": True, "vibrato": False,
+        "arpejo": False, "reverb": "0.55", "gain": "0.78"
+    },
+    "60_met_metais_graves": {
+        "modo": "simples",
+        "soundfont": "MuseScore_General.sf2",
+        "vozes": {
+            "soprano":   {"patch": 59, "pan": 68, "vol": 90, "canal": 0},
+            "contralto": {"patch": 60, "pan": 56, "vol": 82, "canal": 1},
+            "tenor":     {"patch": 57, "pan": 48, "vol": 84, "canal": 2},
+            "baixo":     {"patch": 57, "pan": 64, "vol": 88, "canal": 3},
+        },
+        "pedal": False, "expressao": True, "vibrato": False,
+        "arpejo": False, "reverb": "0.50", "gain": "0.80"
+    },
+    "61_met_clima_sacro": {
+        "modo": "simples",
+        "soundfont": "CrisisGeneralMidi301.sf2",
+        "vozes": {
+            "soprano":   {"patch": 56, "pan": 68, "vol": 95, "canal": 0},
+            "contralto": {"patch": 60, "pan": 56, "vol": 85, "canal": 1},
+            "tenor":     {"patch": 57, "pan": 48, "vol": 82, "canal": 2},
+            "baixo":     {"patch": 58, "pan": 64, "vol": 88, "canal": 3},
+        },
+        "pad_strings": True,
+        "pedal": False, "expressao": True, "vibrato": False,
+        "arpejo": False, "reverb": "0.55", "gain": "0.80"
+    },
+    "62_met_estudo_vozes": {
+        "modo": "simples",
+        "soundfont": "MuseScore_General.sf2",
+        "vozes": {
+            "soprano":   {"patch": 56, "pan": 20,  "vol": 95, "canal": 0},
+            "contralto": {"patch": 60, "pan": 50,  "vol": 85, "canal": 1},
+            "tenor":     {"patch": 57, "pan": 78,  "vol": 85, "canal": 2},
+            "baixo":     {"patch": 58, "pan": 108, "vol": 90, "canal": 3},
+        },
+        "pedal": False, "expressao": True, "vibrato": False,
+        "arpejo": False, "reverb": "0.40", "gain": "0.80"
     }
 }
 
@@ -1400,8 +1745,8 @@ def aplicar_preset_orquestracao(
     
     cfg_preset = PRESETS_CFG.get(preset)
     if not cfg_preset:
-        log.warning(f"Preset {preset} não encontrado em PRESETS_CFG! Usando padrão piano_devocional.")
-        cfg_preset = PRESETS_CFG["piano_devocional"]
+        log.warning(f"Preset {preset} não encontrado em PRESETS_CFG! Usando padrão 01_piano_devocional.")
+        cfg_preset = PRESETS_CFG["01_piano_devocional"]
         
     sf_mapeado = cfg_preset.get("soundfont", "MuseScore_General.sf2")
     caminho_sf2 = obter_caminho_sf2(sf_mapeado)
@@ -1456,12 +1801,28 @@ def aplicar_preset_orquestracao(
             trilha_remap.append(mido.Message("control_change", channel=canal, control=7, value=cfg["vol"], time=0))
             trilha_remap.append(mido.Message("control_change", channel=canal, control=10, value=cfg["pan"], time=0))
             
-            # Copia notas e outros eventos remapeando para o canal correto
+            # Copia notas e outros eventos remapeando para o canal correto (preserva CCs como expressão, pedal e vibrato)
+            time_acumulado = 0
             for msg in trilha:
-                if hasattr(msg, "channel") and msg.type not in ("program_change", "control_change"):
-                    trilha_remap.append(msg.copy(channel=canal))
-                elif msg.type not in ("program_change", "control_change"):
-                    trilha_remap.append(msg.copy())
+                time_acumulado += msg.time
+                
+                # Descarta program_change originais e CCs de volume (7), pan (10), bank (0)
+                deve_descartar = False
+                if msg.type == "program_change":
+                    deve_descartar = True
+                elif msg.type == "control_change" and msg.control in (0, 7, 10):
+                    deve_descartar = True
+                
+                if deve_descartar:
+                    continue
+                
+                msg_copia = msg.copy()
+                msg_copia.time = time_acumulado
+                time_acumulado = 0
+                
+                if hasattr(msg_copia, "channel"):
+                    msg_copia.channel = canal
+                trilha_remap.append(msg_copia)
                     
             novo_midi.tracks.append(trilha_remap)
 
@@ -1469,7 +1830,7 @@ def aplicar_preset_orquestracao(
         if cfg_preset.get("pad_strings"):
             log.info("Injetando pad de strings secundário para encorpar...")
             for papel in ("soprano", "contralto", "tenor", "baixo"):
-                if preset == "05_orgao_ccb_celeste" and papel != "soprano":
+                if preset == "12_orgao_ccb_celeste" and papel != "soprano":
                     continue
                 
                 cfg = config_vozes[papel]
@@ -1480,19 +1841,34 @@ def aplicar_preset_orquestracao(
                 trilha_pad = mido.MidiTrack()
                 trilha_pad.name = f"{papel.capitalize()} Strings (Pad)"
                 
-                fator_vol = 0.50 if preset == "05_orgao_ccb_celeste" else 0.40
-                if preset in ("orquestra_sacra", "crisis_orquestral", "04_orquestra_completa"):
+                fator_vol = 0.50 if preset == "12_orgao_ccb_celeste" else 0.40
+                if preset in ("orquestra_sacra", "crisis_orquestral", "41_orquestra_completa"):
                     fator_vol = 0.65
 
                 trilha_pad.append(mido.Message("program_change", channel=canal_pad, program=48, time=0))
                 trilha_pad.append(mido.Message("control_change", channel=canal_pad, control=7, value=int(cfg["vol"] * fator_vol), time=0))
                 trilha_pad.append(mido.Message("control_change", channel=canal_pad, control=10, value=cfg["pan"], time=0))
                 
+                time_acumulado = 0
                 for msg in trilha_orig:
-                    if hasattr(msg, "channel") and msg.type not in ("program_change", "control_change"):
-                        trilha_pad.append(msg.copy(channel=canal_pad))
-                    elif msg.type not in ("program_change", "control_change"):
-                        trilha_pad.append(msg.copy())
+                    time_acumulado += msg.time
+                    
+                    deve_descartar = False
+                    if msg.type == "program_change":
+                        deve_descartar = True
+                    elif msg.type == "control_change" and msg.control in (0, 7, 10):
+                        deve_descartar = True
+                        
+                    if deve_descartar:
+                        continue
+                        
+                    msg_copia = msg.copy()
+                    msg_copia.time = time_acumulado
+                    time_acumulado = 0
+                    
+                    if hasattr(msg_copia, "channel"):
+                        msg_copia.channel = canal_pad
+                    trilha_pad.append(msg_copia)
                 novo_midi.tracks.append(trilha_pad)
 
         return novo_midi, caminho_sf2
@@ -1560,11 +1936,26 @@ def renderizar_hibrido(
                 trilha_nova.append(mido.Message("control_change", channel=canal_local, control=7,  value=vol_grupo, time=0))
                 trilha_nova.append(mido.Message("control_change", channel=canal_local, control=10, value=pan, time=0))
 
+                time_acumulado = 0
                 for msg in trilha_orig:
-                    if hasattr(msg, "channel") and msg.type not in ("program_change", "control_change"):
-                        trilha_nova.append(msg.copy(channel=canal_local))
-                    elif msg.type not in ("program_change", "control_change"):
-                        trilha_nova.append(msg.copy())
+                    time_acumulado += msg.time
+                    
+                    deve_descartar = False
+                    if msg.type == "program_change":
+                        deve_descartar = True
+                    elif msg.type == "control_change" and msg.control in (0, 7, 10):
+                        deve_descartar = True
+                        
+                    if deve_descartar:
+                        continue
+                        
+                    msg_copia = msg.copy()
+                    msg_copia.time = time_acumulado
+                    time_acumulado = 0
+                    
+                    if hasattr(msg_copia, "channel"):
+                        msg_copia.channel = canal_local
+                    trilha_nova.append(msg_copia)
 
                 midi_grupo.tracks.append(trilha_nova)
                 canal_local += 1
@@ -1619,7 +2010,7 @@ def _mixar_wavs(wavs: list[Path], arquivo_mp3: Path, log: logging.Logger):
 def main():
     parser = argparse.ArgumentParser(description="renderizador2.py — Conversor MIDI → MP3 Avançado")
     parser.add_argument("--mid", type=str, required=True, help="Arquivo MIDI de entrada")
-    parser.add_argument("--preset", type=str, default="piano_devocional", help="Preset de renderização")
+    parser.add_argument("--preset", type=str, default="01_piano_devocional", help="Preset de renderização")
     parser.add_argument("--saida-dir", type=str, help="Diretório de saída")
     parser.add_argument("--seed", type=int, default=42, help="Seed para humanização determinística")
     parser.add_argument("--reiniciar", action="store_true", help="Sobrescreve arquivos já gerados")
@@ -1667,8 +2058,8 @@ def main():
         # Resolve config do preset
         cfg_preset = PRESETS_CFG.get(args.preset)
         if not cfg_preset:
-            log.warning(f"Preset {args.preset} não encontrado! Usando padrão piano_devocional.")
-            cfg_preset = PRESETS_CFG["piano_devocional"]
+            log.warning(f"Preset {args.preset} não encontrado! Usando padrão 01_piano_devocional.")
+            cfg_preset = PRESETS_CFG["01_piano_devocional"]
 
         # 2. Detecção SATB
         vozes = detectar_vozes_satb(midi_original, log)
@@ -1715,7 +2106,7 @@ def main():
             ativar_arpejo = False
         else:
             # Presets que ativam arpejo por padrão
-            if cfg_preset.get("arpejo", False) or args.preset in ("piano_arpejado_suave", "musicbox_suave", "08_orgao_pleno_arpejado"):
+            if cfg_preset.get("arpejo", False) or args.preset in ("02_piano_arpejado_suave", "04_musicbox_suave", "15_orgao_pleno_arpejado"):
                 ativar_arpejo = True
 
         if ativar_arpejo:
@@ -1729,7 +2120,18 @@ def main():
 
         # Salva JSON de parâmetros
         if args.salvar_json:
+            def limpar_para_json(obj):
+                if isinstance(obj, dict):
+                    return {k: limpar_para_json(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [limpar_para_json(x) for x in obj]
+                elif isinstance(obj, Path):
+                    return str(obj)
+                else:
+                    return obj
+
             parametros = {
+                "geracao": 2,
                 "mid_original": str(caminho_mid.name),
                 "preset": args.preset,
                 "soundfont": caminho_sf2.name if cfg_preset.get("modo", "simples") == "simples" else "hibrido",
@@ -1737,10 +2139,12 @@ def main():
                 "humanizacao": args.humanizacao,
                 "arpejo_ativado": ativar_arpejo,
                 "vozes_satb": vozes,
-                "data_processamento": datetime.now().isoformat()
+                "data_processamento": datetime.now().isoformat(),
+                "parametros_recebidos": limpar_para_json(vars(args)),
+                "configuracao_interna": limpar_para_json(cfg_preset)
             }
             with open(arquivo_json, "w", encoding="utf-8") as f_json:
-                json.dump(parametros, f_json, indent=4, ensure_ascii=False)
+                json.dump(limpar_para_json(parametros), f_json, indent=4, ensure_ascii=False)
             log.info("Parâmetros do processo salvos em parametros.json")
 
         # 8. Renderização (Híbrida ou FluidSynth Simples)

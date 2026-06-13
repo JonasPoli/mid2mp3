@@ -693,6 +693,63 @@ def main():
         # 6. Salva JSON de parâmetros
         import json
         from datetime import datetime
+        
+        def limpar_para_json(obj):
+            if isinstance(obj, dict):
+                return {k: limpar_para_json(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [limpar_para_json(x) for x in obj]
+            elif isinstance(obj, Path):
+                return str(obj)
+            else:
+                return obj
+
+        # Determina a configuração interna baseado no arranjo selecionado
+        if args.tipo_arranjo == "piano_solo":
+            cfg_arranjo = {
+                "nome": "piano_solo",
+                "soundfonts": ["Equinox_Grand_Pianos.sf2"],
+                "vozes": {
+                    "soprano": {"sf2": "Equinox_Grand_Pianos.sf2", "patch": 0, "vol": 100},
+                    "contralto": {"sf2": "Equinox_Grand_Pianos.sf2", "patch": 0, "vol": 100},
+                    "tenor": {"sf2": "Equinox_Grand_Pianos.sf2", "patch": 0, "vol": 100},
+                    "baixo": {"sf2": "Equinox_Grand_Pianos.sf2", "patch": 0, "vol": 100}
+                }
+            }
+        elif args.tipo_arranjo == "quarteto_cordas":
+            cfg_arranjo = {
+                "nome": "quarteto_cordas",
+                "soundfonts": ["aaviolin.sf2", "CrisisGeneralMidi301.sf2"],
+                "vozes": {
+                    "soprano": {"sf2": "aaviolin.sf2", "patch": 0, "vol": 105},
+                    "contralto": {"sf2": "CrisisGeneralMidi301.sf2", "patch": 41, "vol": 85},
+                    "tenor": {"sf2": "CrisisGeneralMidi301.sf2", "patch": 42, "vol": 85},
+                    "baixo": {"sf2": "CrisisGeneralMidi301.sf2", "patch": 43, "vol": 85}
+                }
+            }
+        elif args.tipo_arranjo == "orgao_coral":
+            cfg_arranjo = {
+                "nome": "orgao_coral",
+                "soundfonts": ["Mellotron.sf2", "Timbres_of_Heaven.sf2"],
+                "vozes": {
+                    "soprano": {"sf2": "Mellotron.sf2", "patch": 52, "vol": 90},
+                    "contralto": {"sf2": "Mellotron.sf2", "patch": 52, "vol": 90},
+                    "tenor": {"sf2": "Timbres_of_Heaven.sf2", "patch": 19, "vol": 95},
+                    "baixo": {"sf2": "Timbres_of_Heaven.sf2", "patch": 19, "vol": 95}
+                }
+            }
+        else: # orquestra_completa
+            cfg_arranjo = {
+                "nome": "orquestra_completa",
+                "soundfonts": ["CrisisGeneralMidi301.sf2"],
+                "vozes": {
+                    "soprano": {"sf2": "CrisisGeneralMidi301.sf2", "patch": 73, "vol": 95},
+                    "contralto": {"sf2": "CrisisGeneralMidi301.sf2", "patch": 71, "vol": 95},
+                    "tenor": {"sf2": "CrisisGeneralMidi301.sf2", "patch": 60, "vol": 95},
+                    "baixo": {"sf2": "CrisisGeneralMidi301.sf2", "patch": 42, "vol": 95}
+                }
+            }
+
         arquivo_json = caminho_mp3.parent / "parametros.json"
         parametros = {
             "geracao": 3,
@@ -701,10 +758,12 @@ def main():
             "seed": 42,
             "humanizacao": True,
             "vozes_satb": vozes,
-            "data_processamento": datetime.now().isoformat()
+            "data_processamento": datetime.now().isoformat(),
+            "parametros_recebidos": limpar_para_json(vars(args)),
+            "configuracao_interna": limpar_para_json(cfg_arranjo)
         }
         with open(arquivo_json, "w", encoding="utf-8") as f_json:
-            json.dump(parametros, f_json, indent=4, ensure_ascii=False)
+            json.dump(limpar_para_json(parametros), f_json, indent=4, ensure_ascii=False)
         log.info(f"Parâmetros salvos em: {arquivo_json.name}")
 
     except Exception as e:
