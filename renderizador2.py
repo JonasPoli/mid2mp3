@@ -303,10 +303,7 @@ def aplicar_humanizacao(
         # Atraso aleatório de 0 a 150ms (0 a 0.15s) no corpo e 0 a 200ms (0 a 0.20s) em fim de frase para pianos solos.
         # Para outros instrumentos (órgãos, orquestras, metais, synths, caixinha de música e híbridos),
         # limitamos a no máximo 20ms (0.02s) para manter o sincronismo impecável.
-        if is_pure_piano:
-            limite_delay = 0.20 if eh_fim_de_frase(t, onset_ticks, phrase_ends) else 0.15
-        else:
-            limite_delay = 0.02
+        limite_delay = 0.20 if eh_fim_de_frase(t, onset_ticks, phrase_ends) else 0.15
 
         if idx == 0:
             cur_delays = {
