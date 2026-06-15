@@ -179,6 +179,86 @@ def obter_tempo_midi(midi: mido.MidiFile) -> int:
                 return msg.tempo
     return 500_000  # Fallback 120 BPM
 
+def aplicar_velocidade(
+    midi_in: mido.MidiFile,
+    porcentagem: float,
+    log: logging.Logger | None = None,
+) -> mido.MidiFile:
+    """
+    Ajusta a velocidade de reprodução do MIDI escalando todos os set_tempo.
+    """
+    if log is None:
+        log = logging.getLogger("renderizador2")
+
+    porcentagem = max(10.0, min(1000.0, porcentagem))
+    fator = 100.0 / porcentagem  # >1 = mais lento, <1 = mais rápido
+
+    novo_midi = mido.MidiFile(type=midi_in.type, ticks_per_beat=midi_in.ticks_per_beat)
+    alterados = 0
+
+    for trilha in midi_in.tracks:
+        nova_trilha = mido.MidiTrack()
+        nova_trilha.name = trilha.name
+        for msg in trilha:
+            if msg.type == "set_tempo":
+                novo_tempo = max(1, int(round(msg.tempo * fator)))
+                nova_trilha.append(msg.copy(tempo=novo_tempo))
+                alterados += 1
+            else:
+                nova_trilha.append(msg)
+        novo_midi.tracks.append(nova_trilha)
+
+    if alterados == 0:
+        tempo_padrao = 500_000  # 120 BPM
+        novo_tempo = max(1, int(round(tempo_padrao * fator)))
+        novo_midi.tracks[0].insert(0, mido.MetaMessage("set_tempo", tempo=novo_tempo, time=0))
+
+    return novo_midi
+
+def aplicar_transposicao(
+    midi_in: mido.MidiFile,
+    semitons: int,
+    log: logging.Logger | None = None,
+) -> mido.MidiFile:
+    """
+    Transpõe todas as notas do MIDI em N semitons.
+    semitons > 0  -> sobe (ex: +12 = uma oitava acima)
+    semitons < 0  -> desce (ex: -12 = uma oitava abaixo)
+    semitons = 0  -> nenhuma alteração
+    Canal 9 (percussão GM) não é transposto.
+    Notas fora do intervalo 0-127 após transposição são descartadas.
+    """
+    if log is None:
+        log = logging.getLogger("renderizador2")
+
+    if semitons == 0:
+        return midi_in
+
+    sentido = "cima" if semitons > 0 else "baixo"
+    log.info(f"  Transposição: {semitons:+d} semitons ({sentido})")
+
+    novo_midi = mido.MidiFile(type=midi_in.type, ticks_per_beat=midi_in.ticks_per_beat)
+    descartadas = 0
+
+    for trilha in midi_in.tracks:
+        nova_trilha = mido.MidiTrack()
+        nova_trilha.name = trilha.name
+        for msg in trilha:
+            if msg.type in ("note_on", "note_off") and getattr(msg, "channel", 9) != 9:
+                nova_nota = msg.note + semitons
+                if 0 <= nova_nota <= 127:
+                    nova_trilha.append(msg.copy(note=nova_nota))
+                else:
+                    descartadas += 1
+            else:
+                nova_trilha.append(msg)
+        novo_midi.tracks.append(nova_trilha)
+
+    if descartadas:
+        log.warning(f"  {descartadas} nota(s) descartada(s) por ficarem fora do alcance MIDI (0-127)")
+
+    return novo_midi
+
 def converter_ms_para_ticks(ms: float, ticks_por_beat: int, tempo_us: int) -> int:
     """Converte um intervalo em milissegundos para ticks MIDI."""
     # ticks_por_segundo = ticks_por_beat * 1_000_000 / tempo_us
@@ -2008,6 +2088,7 @@ def main():
     parser = argparse.ArgumentParser(description="renderizador2.py — Conversor MIDI → MP3 Avançado")
     parser.add_argument("--mid", type=str, required=True, help="Arquivo MIDI de entrada")
     parser.add_argument("--preset", type=str, default="01_piano_devocional", help="Preset de renderização")
+    parser.add_argument("--velocidade", type=float, default=100.0, help="Ajusta a velocidade de reprodução em %")
     parser.add_argument("--saida-dir", type=str, help="Diretório de saída")
     parser.add_argument("--seed", type=int, default=42, help="Seed para humanização determinística")
     parser.add_argument("--reiniciar", action="store_true", help="Sobrescreve arquivos já gerados")
@@ -2018,6 +2099,7 @@ def main():
     parser.add_argument("--sem-arpejo", action="store_true", help="Inibe a ativação do arpejo sacro")
     parser.add_argument("--normalizar", action="store_true", default=True, help="Normaliza o áudio final")
     parser.add_argument("--manter-wav", action="store_true", help="Não apaga arquivos WAV temporários")
+    parser.add_argument("--semitons", type=int, default=0, help="Transpõe todas as notas N semitons")
     parser.add_argument("--debug", action="store_true", help="Ativa logs de depuração")
 
     args = parser.parse_args()
@@ -2051,6 +2133,15 @@ def main():
     try:
         # Carrega MIDI original
         midi_original = mido.MidiFile(str(caminho_mid))
+        
+        # Ajusta velocidade se solicitado
+        if args.velocidade != 100.0:
+            log.info(f"🎵 Ajustando velocidade para {args.velocidade:.0f}%")
+            midi_original = aplicar_velocidade(midi_original, args.velocidade, log)
+
+        # Transpõe se solicitado
+        if args.semitons != 0:
+            midi_original = aplicar_transposicao(midi_original, args.semitons, log)
         
         # Resolve config do preset
         cfg_preset = PRESETS_CFG.get(args.preset)
