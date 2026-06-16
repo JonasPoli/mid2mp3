@@ -1,0 +1,486 @@
+﻿tipo,numero,titulo,arquivo
+hino,1,"Cristo, Meu Mestre",hino-001-cristo-meu-mestre.txt
+hino,2,De Deus Tu És Eleita,hino-002-de-deus-tu-es-eleita.txt
+hino,3,Faz-Nos Ouvir Tua Voz,hino-003-faz-nos-ouvir-tua-voz.txt
+hino,4,Ouve a Nossa Oração,hino-004-ouve-a-nossa-oracao.txt
+hino,5,A Rocha Celestial,hino-005-a-rocha-celestial.txt
+hino,6,"Glória ao Justo, fiel Cordeiro",hino-006-gloria-ao-justo-fiel-cordeiro.txt
+hino,7,"Granjeai, granjeai os talentos",hino-007-granjeai-granjeai-os-talentos.txt
+hino,8,"Oh! Vem, Sim, Vem",hino-008-oh-vem-sim-vem.txt
+hino,9,Luminosa é a Senda,hino-009-luminosa-e-a-senda.txt
+hino,10,Prossegui Vitoriosos Em Cristo,hino-010-prossegui-vitoriosos-em-cristo.txt
+hino,11,"Ó Igreja de Deus, Resplandece",hino-011-o-igreja-de-deus-resplandece.txt
+hino,12,Sempre Em Jesus Confiarei,hino-012-sempre-em-jesus-confiarei.txt
+hino,13,Confiemos em Deus,hino-013-confiemos-em-deus.txt
+hino,14,Manda Os Teus Dons Celestes,hino-014-manda-os-teus-dons-celestes.txt
+hino,15,Ó Alma Que Choras,hino-015-o-alma-que-choras.txt
+hino,16,Promessa Excelente,hino-016-promessa-excelente.txt
+hino,17,"Ó Senhor, Vem Visitar-Me",hino-017-o-senhor-vem-visitar-me.txt
+hino,18,É Jesus Meu Refúgio,hino-018-e-jesus-meu-refugio.txt
+hino,19,Manda-Nos Teu Poder,hino-019-manda-nos-teu-poder.txt
+hino,20,Teu Espírito Derrama,hino-020-teu-espirito-derrama.txt
+hino,21,Não Mais Oprimidos Seremos,hino-021-nao-mais-oprimidos-seremos.txt
+hino,22,"Guia-me, Ó Senhor",hino-022-guia-me-o-senhor.txt
+hino,23,O Senhor é o Meu Pastor,hino-023-o-senhor-e-o-meu-pastor.txt
+hino,24,"Dá-me Graça, Senhor",hino-024-da-me-graca-senhor.txt
+hino,25,"Um Grande Bem, Precioso Bem",hino-025-um-grande-bem-precioso-bem.txt
+hino,26,"Julga-me, Senhor",hino-026-julga-me-senhor.txt
+hino,27,O Senhor é Minha Luz,hino-027-o-senhor-e-minha-luz.txt
+hino,28,Para o Céu Marchemos,hino-028-para-o-ceu-marchemos.txt
+hino,29,"Senhor Jesus, Tu És o Meu Rochedo",hino-029-senhor-jesus-tu-es-o-meu-rochedo.txt
+hino,30,Confiarei Sempre no Senhor,hino-030-confiarei-sempre-no-senhor.txt
+hino,31,Forte Rocha,hino-031-forte-rocha.txt
+hino,32,"Eu Me Escondo Em Ti, Senhor",hino-032-eu-me-escondo-em-ti-senhor.txt
+hino,33,Jesus é o Nosso Guia,hino-033-jesus-e-o-nosso-guia.txt
+hino,34,O Mestre Que Desceu Dos Céus,hino-034-o-mestre-que-desceu-dos-ceus.txt
+hino,35,Eis Que Multidão Mui Grande,hino-035-eis-que-multidao-mui-grande.txt
+hino,36,A Fiel Proteção,hino-036-a-fiel-protecao.txt
+hino,37,Se A Nossa Vida Entregarmos a Jesus,hino-037-se-a-nossa-vida-entregarmos-a-jesus.txt
+hino,38,"Ó Senhor, És Minha Vida (Com Veneração)",hino-038-o-senhor-es-minha-vida-com-veneracao.txt
+hino,39,"Eu Desejo, Senhor",hino-039-eu-desejo-senhor.txt
+hino,40,Quanto Em Mim Tu Operaste,hino-040-quanto-em-mim-tu-operaste.txt
+hino,41,O Teu Coração Vem a Cristo Entregar,hino-041-o-teu-coracao-vem-a-cristo-entregar.txt
+hino,42,"Ó Minha Alma, Por Que Te Abates?",hino-042-o-minha-alma-por-que-te-abates.txt
+hino,43,"Trema O Céu, a Terra, o Mar",hino-043-trema-o-ceu-a-terra-o-mar.txt
+hino,44,SOL DA JUSTIÇA,hino-044-sol-da-justica.txt
+hino,45,Oh! Quanto Nos Amaste!,hino-045-oh-quanto-nos-amaste.txt
+hino,46,Grandioso é o Nosso Deus,hino-046-grandioso-e-o-nosso-deus.txt
+hino,47,Sublime é o Perdão,hino-047-sublime-e-o-perdao.txt
+hino,48,Creio No Senhor,hino-048-creio-no-senhor.txt
+hino,49,"Venho Adorar-Te, Santo Criador",hino-049-venho-adorar-te-santo-criador.txt
+hino,50,Glória a Jesus! Aleluia!,hino-050-gloria-a-jesus-aleluia.txt
+hino,51,A Palavra do Senhor é Pão Celestial,hino-051-a-palavra-do-senhor-e-pao-celestial.txt
+hino,52,Luz Eternal é Jesus,hino-052-luz-eternal-e-jesus.txt
+hino,53,Nós Somos Luz Do Mundo,hino-053-nos-somos-luz-do-mundo.txt
+hino,54,Um Tesouro Glorioso Achei,hino-054-um-tesouro-glorioso-achei.txt
+hino,55,Paz Seja Em Vós,hino-055-paz-seja-em-vos.txt
+hino,56,Põe Em Deus a Confiança,hino-056-poe-em-deus-a-confianca.txt
+hino,57,É Estreita a Porta Para a salvação,hino-057-e-estreita-a-porta-para-a-salvacao.txt
+hino,58,Sou Crente Em Jesus,hino-058-sou-crente-em-jesus.txt
+hino,59,Faz-Me Mais Perseverantes,hino-059-faz-me-mais-perseverantes.txt
+hino,60,Oh! Vem a Jesus,hino-060-oh-vem-a-jesus.txt
+hino,61,A Minha Alma Deseja Ver-Te (Com Submissão),hino-061-a-minha-alma-deseja-ver-te-com-submissao.txt
+hino,62,"Ó Criador, Forte Rocha És",hino-062-o-criador-forte-rocha-es.txt
+hino,63,"Se Vós Baterdes, Ele Vos Abre",hino-063-se-vos-baterdes-ele-vos-abre.txt
+hino,64,"Tu, Que Vives Sem Destino.",hino-064-tu-que-vives-sem-destino.txt
+hino,65,Igual ao Mestre,hino-065-igual-ao-mestre.txt
+hino,66,Cansado Estás? Vem a Jesus,hino-066-cansado-estas-vem-a-jesus.txt
+hino,67,“Vinde a Mim”,hino-067-vinde-a-mim.txt
+hino,68,"Sem Tardar, Vai a Cristo",hino-068-sem-tardar-vai-a-cristo.txt
+hino,69,A Família De Jesus,hino-069-a-familia-de-jesus.txt
+hino,70,Tu És A Minha Esperança,hino-070-tu-es-a-minha-esperanca.txt
+hino,71,"Ó Senhor Jesus, Eu Recorro a Ti",hino-071-o-senhor-jesus-eu-recorro-a-ti.txt
+hino,72,"Nome glorioso, O de Jesus",hino-072-nome-glorioso-o-de-jesus.txt
+hino,73,"Semearei, Semearei",hino-073-semearei-semearei.txt
+hino,74,Vamos Produzir Frutos de Louvor,hino-074-vamos-produzir-frutos-de-louvor.txt
+hino,75,"Vem a Jesus, ó Alma Errante",hino-075-vem-a-jesus-o-alma-errante.txt
+hino,76,Cristo Jesus Sua Mão Me Dá,hino-076-cristo-jesus-sua-mao-me-da.txt
+hino,77,Vamos Lançar a Semente,hino-077-vamos-lancar-a-semente.txt
+hino,78,Glória a Jesus! Glória a Jesus!,hino-078-gloria-a-jesus-gloria-a-jesus.txt
+hino,79,Bom É Estarmos Nós Aqui,hino-079-bom-e-estarmos-nos-aqui.txt
+hino,80,"Por Cristo, Resgatado",hino-080-por-cristo-resgatado.txt
+hino,81,Vida Deu Por Ti,hino-081-vida-deu-por-ti.txt
+hino,82,Oh! Que Grande Amor,hino-082-oh-que-grande-amor.txt
+hino,83,Vinde Ás Bodas,hino-083-vinde-as-bodas.txt
+hino,84,Quão Amável é a Tua Casa,hino-084-quao-amavel-e-a-tua-casa.txt
+hino,85,Anunciai o Santo Evangelho (Batismo),hino-085-anunciai-o-santo-evangelho-batismo.txt
+hino,86,"Grande Tu És, ó Pai",hino-086-grande-tu-es-o-pai.txt
+hino,87,Eis Que Vem Jesus,hino-087-eis-que-vem-jesus.txt
+hino,88,Minha Oração,hino-088-minha-oracao.txt
+hino,89,Oh! Grande Deus,hino-089-oh-grande-deus.txt
+hino,90,Teu Destino é a Glória,hino-090-teu-destino-e-a-gloria.txt
+hino,91,No Esconderijo Do Onipotente,hino-091-no-esconderijo-do-onipotente.txt
+hino,92,O Santo Evangelho,hino-092-o-santo-evangelho.txt
+hino,93,Aceitando ao Senhor,hino-093-aceitando-ao-senhor.txt
+hino,94,Quem Sustenta a Nossa Vida,hino-094-quem-sustenta-a-nossa-vida.txt
+hino,95,"“Vinde, ó Benditos de Meu Pai”",hino-095-vinde-o-benditos-de-meu-pai.txt
+hino,96,"Vinde, Adoremos a Deus (Solene)",hino-096-vinde-adoremos-a-deus-solene.txt
+hino,97,"Cristo Jesus, Nosso Bom Pastor",hino-097-cristo-jesus-nosso-bom-pastor.txt
+hino,98,Cristo Jesus Tudo Pode,hino-098-cristo-jesus-tudo-pode.txt
+hino,99,Jesus Cristo é o Amigo Celestial,hino-099-jesus-cristo-e-o-amigo-celestial.txt
+hino,100,"Todos Juntos, Jubilemos",hino-100-todos-juntos-jubilemos.txt
+hino,101,"Cantemos, Juntos, Louvores a Deus",hino-101-cantemos-juntos-louvores-a-deus.txt
+hino,102,Sinto a Voz Divina Do Meu Fiel Pastor,hino-102-sinto-a-voz-divina-do-meu-fiel-pastor.txt
+hino,103,"Bendize, Ó Minha Alma",hino-103-bendize-o-minha-alma.txt
+hino,104,"Santo, Santo És, Senhor",hino-104-santo-santo-es-senhor.txt
+hino,105,Volta ao Teu Lar Paternal,hino-105-volta-ao-teu-lar-paternal.txt
+hino,106,Em Nome do Nosso Redentor,hino-106-em-nome-do-nosso-redentor.txt
+hino,107,O Fim De Tudo Chegará,hino-107-o-fim-de-tudo-chegara.txt
+hino,108,É Jesus a Fonte De Riqueza,hino-108-e-jesus-a-fonte-de-riqueza.txt
+hino,109,"Vem, Ó Senhor, Ajudar-Me",hino-109-vem-o-senhor-ajudar-me.txt
+hino,110,"Vigiai, Irmãos",hino-110-vigiai-irmaos.txt
+hino,111,Do Sepulcro Ressurgiu Triunfante,hino-111-do-sepulcro-ressurgiu-triunfante.txt
+hino,112,Sigamos Sempre ao Senhor,hino-112-sigamos-sempre-ao-senhor.txt
+hino,113,O Senhor Seja Louvado,hino-113-o-senhor-seja-louvado.txt
+hino,114,"Clama ao Mestre, Cristo Jesus",hino-114-clama-ao-mestre-cristo-jesus.txt
+hino,115,Minha Alma Engrandece,hino-115-minha-alma-engrandece.txt
+hino,116,Amo Ao Senhor,hino-116-amo-ao-senhor.txt
+hino,117,Jesus Habita Em Meu Coração,hino-117-jesus-habita-em-meu-coracao.txt
+hino,118,Fiel Salvador é Jesus,hino-118-fiel-salvador-e-jesus.txt
+hino,119,Luz Aos Meus Pés é a Tua Palavra,hino-119-luz-aos-meus-pes-e-a-tua-palavra.txt
+hino,120,Nossa Cruz Tomemos,hino-120-nossa-cruz-tomemos.txt
+hino,121,O Meu Socorro Vem Do Senhor,hino-121-o-meu-socorro-vem-do-senhor.txt
+hino,122,Alegrei-me Quando Me Disseram,hino-122-alegrei-me-quando-me-disseram.txt
+hino,123,"Ó Jesus, És Meu Guardião",hino-123-o-jesus-es-meu-guardiao.txt
+hino,124,Vivo Na Graça,hino-124-vivo-na-graca.txt
+hino,125,Mais Grato a Ti,hino-125-mais-grato-a-ti.txt
+hino,126,Levemos a Mensagem de Amor,hino-126-levemos-a-mensagem-de-amor.txt
+hino,127,"Meu Bom Jesus, Contigo Almejo Estar",hino-127-meu-bom-jesus-contigo-almejo-estar.txt
+hino,128,"Teu Filho Sou, ó Criador",hino-128-teu-filho-sou-o-criador.txt
+hino,129,Salvo Estou Por Jesus,hino-129-salvo-estou-por-jesus.txt
+hino,130,A Minha Alma,hino-130-a-minha-alma.txt
+hino,131,"Ó Senhor Glorioso, Deus da Perfeição",hino-131-o-senhor-glorioso-deus-da-perfeicao.txt
+hino,132,"Eis-me, Senhor, aos Teus Pés",hino-132-eis-me-senhor-aos-teus-pes.txt
+hino,133,Quão Bom e Quão Suave,hino-133-quao-bom-e-quao-suave.txt
+hino,134,"Teu Amor, Ó Cordeiro Divinal",hino-134-teu-amor-o-cordeiro-divinal.txt
+hino,135,Bendito o Rei que Veio do Céu (Majestoso),hino-135-bendito-o-rei-que-veio-do-ceu-majestoso.txt
+hino,136,Benignidade Eterna é a De Deus,hino-136-benignidade-eterna-e-a-de-deus.txt
+hino,137,"Senhor, Vem Selar-Nos",hino-137-senhor-vem-selar-nos.txt
+hino,138,Louvemos ao Bom Jesus,hino-138-louvemos-ao-bom-jesus.txt
+hino,139,Ó Senhor Tu me conheces,hino-139-o-senhor-tu-me-conheces.txt
+hino,140,Sou Feliz,hino-140-sou-feliz.txt
+hino,141,"Cristo, o Verbo",hino-141-cristo-o-verbo.txt
+hino,142,Ó Pai Celestial,hino-142-o-pai-celestial.txt
+hino,143,"Porfiemos, Irmãos, Por Entrar Nos Céus",hino-143-porfiemos-irmaos-por-entrar-nos-ceus.txt
+hino,144,A Vida Eterna,hino-144-a-vida-eterna.txt
+hino,145,Pródigo Filho Vai,hino-145-prodigo-filho-vai.txt
+hino,146,De Deus veio a Luz,hino-146-de-deus-veio-a-luz.txt
+hino,148,"Louvor a Deus, o Criador",hino-148-louvor-a-deus-o-criador.txt
+hino,149,"Ó Irmãos, Por Fé, Louvemos a Jesus",hino-149-o-irmaos-por-fe-louvemos-a-jesus.txt
+hino,150,"Jesus Cristo, Meu Senhor",hino-150-jesus-cristo-meu-senhor.txt
+hino,151,"Se, De Cristo, o Nome Amares",hino-151-se-de-cristo-o-nome-amares.txt
+hino,152,Venho à Casa do Senhor,hino-152-venho-a-casa-do-senhor.txt
+hino,153,O Divinal Cordeiro,hino-153-o-divinal-cordeiro.txt
+hino,154,Terá Que Renascer,hino-154-tera-que-renascer.txt
+hino,155,"Olha a Cristo, o Redentor",hino-155-olha-a-cristo-o-redentor.txt
+hino,156,Cristo Entrou Nos Céus Primeiro,hino-156-cristo-entrou-nos-ceus-primeiro.txt
+hino,157,Ouve a Voz Que Te Convida...,hino-157-ouve-a-voz-que-te-convida.txt
+hino,158,Meu Lar Está No Céu,hino-158-meu-lar-esta-no-ceu.txt
+hino,159,Deus Amou o Mundo,hino-159-deus-amou-o-mundo.txt
+hino,160,"“Sou o Caminho, A Verdade e a Vida”",hino-160-sou-o-caminho-a-verdade-e-a-vida.txt
+hino,161,Cristo Quer Salvar,hino-161-cristo-quer-salvar.txt
+hino,162,Cristo Salvou-Me,hino-162-cristo-salvou-me.txt
+hino,163,Neste Mundo de Ilusão,hino-163-neste-mundo-de-ilusao.txt
+hino,164,Louvemos Sempre Alegres,hino-164-louvemos-sempre-alegres.txt
+hino,165,Foi o Senhor Jesus,hino-165-foi-o-senhor-jesus.txt
+hino,166,A Graça Inefável de Deus,hino-166-a-graca-inefavel-de-deus.txt
+hino,167,Água Viva,hino-167-agua-viva.txt
+hino,168,A Palavra do Senhor,hino-168-a-palavra-do-senhor.txt
+hino,169,Aos Pés de Deus Estamos,hino-169-aos-pes-de-deus-estamos.txt
+hino,170,"Pai Eternal, Envia dos Céus",hino-170-pai-eternal-envia-dos-ceus.txt
+hino,171,Vida Eterna! Vida Eterna!,hino-171-vida-eterna-vida-eterna.txt
+hino,172,Um Culto Santo ao Senhor (Encerramento),hino-172-um-culto-santo-ao-senhor-encerramento.txt
+hino,173,Para Ouvir Aqui Estamos,hino-173-para-ouvir-aqui-estamos.txt
+hino,174,Vem Atender Ao Seu Chamado,hino-174-vem-atender-ao-seu-chamado.txt
+hino,175,O Senhor Jesus Te Chama,hino-175-o-senhor-jesus-te-chama.txt
+hino,176,"Por Ti, ó Deus Potente (Com Veneração)",hino-176-por-ti-o-deus-potente-com-veneracao.txt
+hino,177,Eu Necessito Achegar-me,hino-177-eu-necessito-achegar-me.txt
+hino,178,A Palavra Preciosa,hino-178-a-palavra-preciosa.txt
+hino,179,Trabalhai! Trabalhai!,hino-179-trabalhai-trabalhai.txt
+hino,180,Jesus é a Luz Que Veio ao Mundo,hino-180-jesus-e-a-luz-que-veio-ao-mundo.txt
+hino,181,"Só Em Cristo, Só Em Cristo",hino-181-so-em-cristo-so-em-cristo.txt
+hino,182,Brevemente Retornará Jesus Cristo,hino-182-brevemente-retornara-jesus-cristo.txt
+hino,183,Cristo Jesus é a Porta Dos Céus,hino-183-cristo-jesus-e-a-porta-dos-ceus.txt
+hino,184,"Nós Te Louvamos, Por Fé, Grande Deus",hino-184-nos-te-louvamos-por-fe-grande-deus.txt
+hino,185,Deus Mandou Sua Luz,hino-185-deus-mandou-sua-luz.txt
+hino,186,"Cristo, Luz Do Mundo",hino-186-cristo-luz-do-mundo.txt
+hino,187,Jesus Cristo Habita Em Nós,hino-187-jesus-cristo-habita-em-nos.txt
+hino,188,O Mestre Habita Em Mim,hino-188-o-mestre-habita-em-mim.txt
+hino,189,Oh! Que Preciosa Paz,hino-189-oh-que-preciosa-paz.txt
+hino,190,"Amados, Não Temamos",hino-190-amados-nao-temamos.txt
+hino,191,"Vem, Vem Consolar-me",hino-191-vem-vem-consolar-me.txt
+hino,192,Quão Fiel Promessa Jesus Nos Fez,hino-192-quao-fiel-promessa-jesus-nos-fez.txt
+hino,193,Nada Jamais Me Faltará,hino-193-nada-jamais-me-faltara.txt
+hino,194,“Vós Chorareis e Vos Lamentareis”,hino-194-vos-chorareis-e-vos-lamentareis.txt
+hino,195,"Senhor, Estou Disposto",hino-195-senhor-estou-disposto.txt
+hino,196,Sem Deus Pai,hino-196-sem-deus-pai.txt
+hino,197,"Senhor, Por Teu Poder",hino-197-senhor-por-teu-poder.txt
+hino,198,Nosso Pai Celeste Sabe e Provê,hino-198-nosso-pai-celeste-sabe-e-prove.txt
+hino,199,"Senhor, Tu És a Minha Porção",hino-199-senhor-tu-es-a-minha-porcao.txt
+hino,200,“Não Se Turbe o Vosso Coração”,hino-200-nao-se-turbe-o-vosso-coracao.txt
+hino,201,Deus Nos Guarde,hino-201-deus-nos-guarde.txt
+hino,202,"Em Ti Me Alegro, Senhor",hino-202-em-ti-me-alegro-senhor.txt
+hino,203,O Meu Vero Amigo é Jesus,hino-203-o-meu-vero-amigo-e-jesus.txt
+hino,204,Só Jesus e Amigo Verdadeiro,hino-204-so-jesus-e-amigo-verdadeiro.txt
+hino,205,Salvo Por Seu Poder,hino-205-salvo-por-seu-poder.txt
+hino,206,Tu És o Amigo,hino-206-tu-es-o-amigo.txt
+hino,207,Cristo é Fiel,hino-207-cristo-e-fiel.txt
+hino,208,"Conserva a Paz, Ó Minha Alma",hino-208-conserva-a-paz-o-minha-alma.txt
+hino,209,"Oh! Marchai, Soldados",hino-209-oh-marchai-soldados.txt
+hino,210,Grandes Promessas,hino-210-grandes-promessas.txt
+hino,211,O Senhor Jesus Passava...,hino-211-o-senhor-jesus-passava.txt
+hino,212,Testemunhas Verazes Nós Somos,hino-212-testemunhas-verazes-nos-somos.txt
+hino,213,Quando Vier do Céu,hino-213-quando-vier-do-ceu.txt
+hino,214,"Como Foi Para Os Céus, Assim Virá",hino-214-como-foi-para-os-ceus-assim-vira.txt
+hino,215,Em Breve Ao Céu Irei,hino-215-em-breve-ao-ceu-irei.txt
+hino,216,"Irmãos, Amemos ao Senhor",hino-216-irmaos-amemos-ao-senhor.txt
+hino,217,"Vamos Unidos, A Deus Louvar",hino-217-vamos-unidos-a-deus-louvar.txt
+hino,218,"Oh! Jubilemos, Devotos de Cristo",hino-218-oh-jubilemos-devotos-de-cristo.txt
+hino,219,Novos Céus Nós Aguardamos,hino-219-novos-ceus-nos-aguardamos.txt
+hino,220,Cristo Voltará,hino-220-cristo-voltara.txt
+hino,221,A Descida do Espírito Santo,hino-221-a-descida-do-espirito-santo.txt
+hino,222,Brevemente Virá o Senhor Jesus,hino-222-brevemente-vira-o-senhor-jesus.txt
+hino,223,"Muitos, Por Fé, Aceitaram Jesus",hino-223-muitos-por-fe-aceitaram-jesus.txt
+hino,224,Só Jesus Concede Paz e Salvação,hino-224-so-jesus-concede-paz-e-salvacao.txt
+hino,225,"Senhor, Com Tua Voz Me Chamas",hino-225-senhor-com-tua-voz-me-chamas.txt
+hino,226,A História do Evangelho,hino-226-a-historia-do-evangelho.txt
+hino,227,Procuras Tu Ao Salvador?,hino-227-procuras-tu-ao-salvador.txt
+hino,228,Salvação! Salvação!,hino-228-salvacao-salvacao.txt
+hino,229,Eu Vivia No Pecado,hino-229-eu-vivia-no-pecado.txt
+hino,230,A Ti Rendemos Graças (Encerramento),hino-230-a-ti-rendemos-gracas-encerramento.txt
+hino,231,"Provemos, Irmãos, Do Amor Do Senhor",hino-231-provemos-irmaos-do-amor-do-senhor.txt
+hino,232,Seguro Estou,hino-232-seguro-estou.txt
+hino,233,"Avante, Santos e Fiéis De Deus",hino-233-avante-santos-e-fieis-de-deus.txt
+hino,234,O Meu Ser Entrego a Cristo,hino-234-o-meu-ser-entrego-a-cristo.txt
+hino,235,Um Amor Imenso,hino-235-um-amor-imenso.txt
+hino,236,Há Um Lugar De Eterna Paz,hino-236-ha-um-lugar-de-eterna-paz.txt
+hino,237,Deus é Por Mim,hino-237-deus-e-por-mim.txt
+hino,238,"Teu Servo Ouve, Fala Senhor",hino-238-teu-servo-ouve-fala-senhor.txt
+hino,239,Eis Que a Noite É Passada,hino-239-eis-que-a-noite-e-passada.txt
+hino,240,Não Me Cansarei De Cantar,hino-240-nao-me-cansarei-de-cantar.txt
+hino,241,A Justiça Divina,hino-241-a-justica-divina.txt
+hino,242,"Profundo é o Saber De Deus, Criador",hino-242-profundo-e-o-saber-de-deus-criador.txt
+hino,243,É Jesus o Nosso Intercessor,hino-243-e-jesus-o-nosso-intercessor.txt
+hino,244,Cristo Intercede Por Ti,hino-244-cristo-intercede-por-ti.txt
+hino,245,Não Pode Entender o Mundo,hino-245-nao-pode-entender-o-mundo.txt
+hino,246,"Irmãos, Já Resgatados",hino-246-irmaos-ja-resgatados.txt
+hino,247,Se Fores Tentado,hino-247-se-fores-tentado.txt
+hino,248,Glória! Aleluia! Sinto Jesus,hino-248-gloria-aleluia-sinto-jesus.txt
+hino,249,A Caridade,hino-249-a-caridade.txt
+hino,250,Com Meu Redentor Viverei Nos Céus,hino-250-com-meu-redentor-viverei-nos-ceus.txt
+hino,251,Firme Nas Mãos De Cristo,hino-251-firme-nas-maos-de-cristo.txt
+hino,252,Exaltação ao Deus Onipotente!,hino-252-exaltacao-ao-deus-onipotente.txt
+hino,253,"Foi Alegre, Ditoso o Dia",hino-253-foi-alegre-ditoso-o-dia.txt
+hino,254,De Jesus a Graça Divina,hino-254-de-jesus-a-graca-divina.txt
+hino,255,Jesus é a Nossa Rocha,hino-255-jesus-e-a-nossa-rocha.txt
+hino,256,"Sem Deus Pai, Vivi No Mundo",hino-256-sem-deus-pai-vivi-no-mundo.txt
+hino,257,Remiu-Nos Por Graça,hino-257-remiu-nos-por-graca.txt
+hino,258,Louvemos Ao Nosso Senhor,hino-258-louvemos-ao-nosso-senhor.txt
+hino,259,Só Triunfará o De Sincero Coração,hino-259-so-triunfara-o-de-sincero-coracao.txt
+hino,260,Sou Servo Inútil (Com Humildade),hino-260-sou-servo-inutil-com-humildade.txt
+hino,261,Vivo Por Cristo,hino-261-vivo-por-cristo.txt
+hino,262,"Senhor, Tua a Igreja.",hino-262-senhor-tua-a-igreja.txt
+hino,263,Cristo é Luz Resplandecente,hino-263-cristo-e-luz-resplandecente.txt
+hino,264,Redentor Celeste e Santo,hino-264-redentor-celeste-e-santo.txt
+hino,265,Bênçãos Dos Céus Prometidas,hino-265-bencaos-dos-ceus-prometidas.txt
+hino,266,Vinde Às Fileiras,hino-266-vinde-as-fileiras.txt
+hino,267,Graça Maravilhosa,hino-267-graca-maravilhosa.txt
+hino,268,Ó Deus Bendito,hino-268-o-deus-bendito.txt
+hino,269,"Ressuscitados, Por Graça, Fomos",hino-269-ressuscitados-por-graca-fomos.txt
+hino,270,Deste Mundo Mais Nada Esperarei,hino-270-deste-mundo-mais-nada-esperarei.txt
+hino,271,"Graças Dou a Ti, Ó Bom Deus (Com Veneração)",hino-271-gracas-dou-a-ti-o-bom-deus-com-veneracao.txt
+hino,272,Louvarei Ao Bom Jesus,hino-272-louvarei-ao-bom-jesus.txt
+hino,273,Jesus Me Deu Celeste Hino,hino-273-jesus-me-deu-celeste-hino.txt
+hino,274,Na Plenitude Estarei,hino-274-na-plenitude-estarei.txt
+hino,275,Avante Eu Vou,hino-275-avante-eu-vou.txt
+hino,276,Ó Senhor da Glória,hino-276-o-senhor-da-gloria.txt
+hino,277,Oh! Quanto É Bom Louvarmos,hino-277-oh-quanto-e-bom-louvarmos.txt
+hino,278,Éramos Mortos Nas Obras Más,hino-278-eramos-mortos-nas-obras-mas.txt
+hino,279,"Oh! Não Temas, Igreja de Jesus",hino-279-oh-nao-temas-igreja-de-jesus.txt
+hino,280,De Deus a Armadura,hino-280-de-deus-a-armadura.txt
+hino,281,Soldados Valorosos Nós Somos,hino-281-soldados-valorosos-nos-somos.txt
+hino,282,Constantemente Oremos a Deus,hino-282-constantemente-oremos-a-deus.txt
+hino,283,"Quero, ó Senhor, Ir Contigo Ao Céu",hino-283-quero-o-senhor-ir-contigo-ao-ceu.txt
+hino,284,Louvor nos Céus Altíssimos,hino-284-louvor-nos-ceus-altissimos.txt
+hino,285,Glória e Louvor a Jesus Darei,hino-285-gloria-e-louvor-a-jesus-darei.txt
+hino,286,Nome Precioso Para Mim,hino-286-nome-precioso-para-mim.txt
+hino,287,"Irmãos Amados, Sempre Avante",hino-287-irmaos-amados-sempre-avante.txt
+hino,288,"Ó Irmãos, Com Cristo Avante",hino-288-o-irmaos-com-cristo-avante.txt
+hino,289,"Avante, Sempre Avante",hino-289-avante-sempre-avante.txt
+hino,290,Sempre Avante!,hino-290-sempre-avante.txt
+hino,291,"Irmãos, Avante, Avante!",hino-291-irmaos-avante-avante.txt
+hino,292,Oh Quanto É Bom o Redentor!,hino-292-oh-quanto-e-bom-o-redentor.txt
+hino,293,Tu És Oleiro,hino-293-tu-es-oleiro.txt
+hino,294,Avante! Coragem! Marchemos,hino-294-avante-coragem-marchemos.txt
+hino,295,"Fui, Senhor, Por Remido",hino-295-fui-senhor-por-remido.txt
+hino,296,"Teu Nome é Soberano, ó Redentor",hino-296-teu-nome-e-soberano-o-redentor.txt
+hino,297,"Senhor, Conforta Meu Coração",hino-297-senhor-conforta-meu-coracao.txt
+hino,298,"Avante Sempre, Sem Temer",hino-298-avante-sempre-sem-temer.txt
+hino,299,Em Nome De Jesus (Solene),hino-299-em-nome-de-jesus-solene.txt
+hino,300,Tudo o Que Nos Falta,hino-300-tudo-o-que-nos-falta.txt
+hino,301,Nossa Esperança é Jesus,hino-301-nossa-esperanca-e-jesus.txt
+hino,302,Que Gloriosa Esperança é Jesus!,hino-302-que-gloriosa-esperanca-e-jesus.txt
+hino,303,O Senhor Não Mudará,hino-303-o-senhor-nao-mudara.txt
+hino,304,Cristo é a Esperança,hino-304-cristo-e-a-esperanca.txt
+hino,305,Oh! Que Fundamento,hino-305-oh-que-fundamento.txt
+hino,306,Bendizei ao Altíssimo Rei,hino-306-bendizei-ao-altissimo-rei.txt
+hino,307,Cristo Nos Dará Da Sua Plenitude,hino-307-cristo-nos-dara-da-sua-plenitude.txt
+hino,308,Soa a Trombeta,hino-308-soa-a-trombeta.txt
+hino,309,Galardão Nos Espera,hino-309-galardao-nos-espera.txt
+hino,310,"Nós Te Louvamos, Ó Rei Dos Reis (Solene)",hino-310-nos-te-louvamos-o-rei-dos-reis-solene.txt
+hino,311,Teus Tesouros Revelaste,hino-311-teus-tesouros-revelaste.txt
+hino,312,Tributo De Louvor,hino-312-tributo-de-louvor.txt
+hino,313,Arrebatado Aos Céus,hino-313-arrebatado-aos-ceus.txt
+hino,314,O Teu Poder Supremo,hino-314-o-teu-poder-supremo.txt
+hino,315,Contempla Do céu,hino-315-contempla-do-ceu.txt
+hino,316,Tua Vida É Triste?,hino-316-tua-vida-e-triste.txt
+hino,317,"Sinto o Senhor, Por Fé, Em Mim",hino-317-sinto-o-senhor-por-fe-em-mim.txt
+hino,318,"Ó salvador, Vem Converter O Pecador",hino-318-o-salvador-vem-converter-o-pecador.txt
+hino,319,Foi Jesus Quem Me salvou,hino-319-foi-jesus-quem-me-salvou.txt
+hino,320,Que Prazer é Andar Com Cristo,hino-320-que-prazer-e-andar-com-cristo.txt
+hino,321,Bendito Seja o Deus Vivente,hino-321-bendito-seja-o-deus-vivente.txt
+hino,322,"Vem, Rei Eterno",hino-322-vem-rei-eterno.txt
+hino,323,Oh! Não Busques Ansioso,hino-323-oh-nao-busques-ansioso.txt
+hino,324,Do Mal o Salvador Veio Me Tirar,hino-324-do-mal-o-salvador-veio-me-tirar.txt
+hino,325,Louvemos Ao Rei Dos Reis,hino-325-louvemos-ao-rei-dos-reis.txt
+hino,326,Sempre A Cristo Fiéis,hino-326-sempre-a-cristo-fieis.txt
+hino,327,Soldados Somos Do Senhor,hino-327-soldados-somos-do-senhor.txt
+hino,328,"Grande é o Teu Poder, Senhor",hino-328-grande-e-o-teu-poder-senhor.txt
+hino,329,Com Fé Combate,hino-329-com-fe-combate.txt
+hino,330,Ao Findar a Jornada,hino-330-ao-findar-a-jornada.txt
+hino,331,Vem a Cristo Sem Tardar,hino-331-vem-a-cristo-sem-tardar.txt
+hino,332,É Cristo Quem Cuida de Ti,hino-332-e-cristo-quem-cuida-de-ti.txt
+hino,333,Peregrino Sou No Mundo,hino-333-peregrino-sou-no-mundo.txt
+hino,334,Há Uma Pátria Perfeita...,hino-334-ha-uma-patria-perfeita.txt
+hino,335,Eu Almejo Nessa Pátria Entrar,hino-335-eu-almejo-nessa-patria-entrar.txt
+hino,336,Sempre Brilhar Devemos,hino-336-sempre-brilhar-devemos.txt
+hino,337,Por Fé Seguimos Ao Senhor,hino-337-por-fe-seguimos-ao-senhor.txt
+hino,338,O Senhor É Sempiterno,hino-338-o-senhor-e-sempiterno.txt
+hino,339,Glória Sem Par,hino-339-gloria-sem-par.txt
+hino,340,No Mundo Sou Peregrino,hino-340-no-mundo-sou-peregrino.txt
+hino,341,Com Fé Espera No Senhor,hino-341-com-fe-espera-no-senhor.txt
+hino,342,Sião Celestial,hino-342-siao-celestial.txt
+hino,343,Lá No Céu Cantaremos,hino-343-la-no-ceu-cantaremos.txt
+hino,344,Vou Encontrar Meu Deus,hino-344-vou-encontrar-meu-deus.txt
+hino,345,Regozijo-Me Em falar Do Salvador,hino-345-regozijo-me-em-falar-do-salvador.txt
+hino,346,Longe Do Mal e Perto De Ti,hino-346-longe-do-mal-e-perto-de-ti.txt
+hino,347,"Ontem, Hoje e Eternamente",hino-347-ontem-hoje-e-eternamente.txt
+hino,348,"Em Cristo Espera, Sem Vacilar",hino-348-em-cristo-espera-sem-vacilar.txt
+hino,349,Irmãos Amados,hino-349-irmaos-amados.txt
+hino,350,A Jornada Farei,hino-350-a-jornada-farei.txt
+hino,351,Senhor Á Tua Presença (Com Humildade),hino-351-senhor-a-tua-presenca-com-humildade.txt
+hino,352,Sinto Viva Esperança,hino-352-sinto-viva-esperanca.txt
+hino,353,Eleitos Nós Somos,hino-353-eleitos-nos-somos.txt
+hino,354,Jerusalém Celestial,hino-354-jerusalem-celestial.txt
+hino,355,"A Ti, Deus, eu Consagrei-me",hino-355-a-ti-deus-eu-consagrei-me.txt
+hino,356,Por Preço Elevado Jesus Resgatou-Me,hino-356-por-preco-elevado-jesus-resgatou-me.txt
+hino,357,Face a Face O Verei,hino-357-face-a-face-o-verei.txt
+hino,358,O Teu Precioso Sangue,hino-358-o-teu-precioso-sangue.txt
+hino,359,"Ó irmãos, de Deus Diletos",hino-359-o-irmaos-de-deus-diletos.txt
+hino,360,Do Mal Apartados Devemos Estar,hino-360-do-mal-apartados-devemos-estar.txt
+hino,361,Tudo Entende o Salvador,hino-361-tudo-entende-o-salvador.txt
+hino,362,Que Bela Herança,hino-362-que-bela-heranca.txt
+hino,363,"Aos Teus Pés Estou, Senhor",hino-363-aos-teus-pes-estou-senhor.txt
+hino,364,Os Tempos Já Chegados São...,hino-364-os-tempos-ja-chegados-sao.txt
+hino,365,"Contrito, Venho a Ti",hino-365-contrito-venho-a-ti.txt
+hino,366,Pela Fé Tereis Vitória,hino-366-pela-fe-tereis-vitoria.txt
+hino,367,Ao Que Vive Para Sempre (Majestoso),hino-367-ao-que-vive-para-sempre-majestoso.txt
+hino,368,Deus Nos Elegeu Para Si,hino-368-deus-nos-elegeu-para-si.txt
+hino,369,Sentes Bater Em Teu Coração,hino-369-sentes-bater-em-teu-coracao.txt
+hino,370,Têm Os Santos Do Senhor,hino-370-tem-os-santos-do-senhor.txt
+hino,371,Aos Teus Pés Me Apresento,hino-371-aos-teus-pes-me-apresento.txt
+hino,372,"Da Igreja, Fiel Fundamento É Jesus",hino-372-da-igreja-fiel-fundamento-e-jesus.txt
+hino,373,"Cristo Jesus, o Redentor",hino-373-cristo-jesus-o-redentor.txt
+hino,374,Santo! Santo! Santo!,hino-374-santo-santo-santo.txt
+hino,375,“A Paz Eu Vos Deixo”,hino-375-a-paz-eu-vos-deixo.txt
+hino,376,"Senhor, Preciso Mais...",hino-376-senhor-preciso-mais.txt
+hino,377,"No Céu, Senhor, No Céu",hino-377-no-ceu-senhor-no-ceu.txt
+hino,378,Grandioso És Tu,hino-378-grandioso-es-tu.txt
+hino,379,Grande Festa haverá Nos Céus,hino-379-grande-festa-havera-nos-ceus.txt
+hino,380,"Com Jesus, Eternamente Viverei",hino-380-com-jesus-eternamente-viverei.txt
+hino,381,"Mui Breve Virá, Mui Breve Virá",hino-381-mui-breve-vira-mui-breve-vira.txt
+hino,382,Creio nas Fiéis promessas Do Meu Deus,hino-382-creio-nas-fieis-promessas-do-meu-deus.txt
+hino,383,Cristo É A Estrela,hino-383-cristo-e-a-estrela.txt
+hino,384,Nos Resgatou e Nos Lavou,hino-384-nos-resgatou-e-nos-lavou.txt
+hino,385,“Vinde Após Mim”,hino-385-vinde-apos-mim.txt
+hino,386,Pela Morte De Jesus,hino-386-pela-morte-de-jesus.txt
+hino,387,"Ó Salvador, Que recebeste Poder",hino-387-o-salvador-que-recebeste-poder.txt
+hino,388,Na Cidade Santa,hino-388-na-cidade-santa.txt
+hino,389,Cristo Jesus Chama Os Seus,hino-389-cristo-jesus-chama-os-seus.txt
+hino,390,Eis Que Vem o Verdadeiro (Majestoso),hino-390-eis-que-vem-o-verdadeiro-majestoso.txt
+hino,391,Um Peregrino Sou Aqui,hino-391-um-peregrino-sou-aqui.txt
+hino,392,"Com Jesus, a Esperança",hino-392-com-jesus-a-esperanca.txt
+hino,393,"Ó Bom Jesus, Meu Caro Jesus",hino-393-o-bom-jesus-meu-caro-jesus.txt
+hino,394,Nas Moradas do Senhor,hino-394-nas-moradas-do-senhor.txt
+hino,395,"“Eis-Me Aqui”, Dirá o Criador (Majestoso)",hino-395-eis-me-aqui-dira-o-criador-majestoso.txt
+hino,396,"Vamos, Ó Irmãos, Marchar",hino-396-vamos-o-irmaos-marchar.txt
+hino,397,Paz sublime paz,hino-397-paz-sublime-paz.txt
+hino,398,Não Tardará a Volta Do Senhor,hino-398-nao-tardara-a-volta-do-senhor.txt
+hino,399,“Sou a Videira”,hino-399-sou-a-videira.txt
+hino,400,Divina Fonte é Jesus,hino-400-divina-fonte-e-jesus.txt
+hino,401,Revela Teu Querer,hino-401-revela-teu-querer.txt
+hino,402,"Ó Irmãos, a Deus Devemos...",hino-402-o-irmaos-a-deus-devemos.txt
+hino,403,Pela Fé Uma Vez...,hino-403-pela-fe-uma-vez.txt
+hino,404,"Por Fé, Recebe o Grande Mestre",hino-404-por-fe-recebe-o-grande-mestre.txt
+hino,405,Só Por Cristo Temos Salvação,hino-405-so-por-cristo-temos-salvacao.txt
+hino,406,A Voz De Cristo Te Convida: Vem!,hino-406-a-voz-de-cristo-te-convida-vem.txt
+hino,407,És Bendito Eternamente!,hino-407-es-bendito-eternamente.txt
+hino,408,Jesus Cristo é o Pão Celeste (Santa Ceia),hino-408-jesus-cristo-e-o-pao-celeste-santa-ceia.txt
+hino,409,Breve descerá Jesus Cristo,hino-409-breve-descera-jesus-cristo.txt
+hino,410,O Sangue Precioso,hino-410-o-sangue-precioso.txt
+hino,411,O Vitupério de Jesus,hino-411-o-vituperio-de-jesus.txt
+hino,412,"Senhor, Recordamos Aqui... (Santa Ceia)",hino-412-senhor-recordamos-aqui-santa-ceia.txt
+hino,413,Foi Por Mim Que Morreste,hino-413-foi-por-mim-que-morreste.txt
+hino,414,Teu Sangue Imaculado (Com Veneração),hino-414-teu-sangue-imaculado-com-veneracao.txt
+hino,415,Na Cruz Morreu o Cordeiro,hino-415-na-cruz-morreu-o-cordeiro.txt
+hino,416,No Calvário...,hino-416-no-calvario.txt
+hino,417,Recordemos-Nos Sempre Do Mestre,hino-417-recordemos-nos-sempre-do-mestre.txt
+hino,418,"Só Jesus Cristo, Santo Cordeiro",hino-418-so-jesus-cristo-santo-cordeiro.txt
+hino,419,“Fazei Isto Em memória de Mim” (Santa Ceia),hino-419-fazei-isto-em-memoria-de-mim-santa-ceia.txt
+hino,420,Foi No Calvário,hino-420-foi-no-calvario.txt
+hino,421,"Recorda, Por Fé, Minha Alma",hino-421-recorda-por-fe-minha-alma.txt
+hino,422,"Jesus Cristo, Fiel Cordeiro",hino-422-jesus-cristo-fiel-cordeiro.txt
+hino,423,Só o Sangue Precioso e Expiador,hino-423-so-o-sangue-precioso-e-expiador.txt
+hino,424,"Ó Jesus, Por Nós Morreste",hino-424-o-jesus-por-nos-morreste.txt
+hino,425,Cristo Supremo,hino-425-cristo-supremo.txt
+hino,426,"Lá No Céu, o Lar De Amor (Funeral)",hino-426-la-no-ceu-o-lar-de-amor-funeral.txt
+hino,427,Os Que No Senhor Dormiram (Funeral),hino-427-os-que-no-senhor-dormiram-funeral.txt
+hino,428,O Dia De Cristo Bem Perto Está (Funeral),hino-428-o-dia-de-cristo-bem-perto-esta-funeral.txt
+hino,429,A Trombeta Soará (Funeral),hino-429-a-trombeta-soara-funeral.txt
+hino,430,"Preciosa é, aos Olhos do Criador (Funeral)",hino-430-preciosa-e-aos-olhos-do-criador-funeral.txt
+hino,431,"Ó Meninos, Estamos Reunidos",hino-431-o-meninos-estamos-reunidos.txt
+hino,432,"Vem, ó Divino Mestre",hino-432-vem-o-divino-mestre.txt
+hino,433,Na Santa Escola,hino-433-na-santa-escola.txt
+hino,434,A minha alma sente paz no Senhor,hino-434-a-minha-alma-sente-paz-no-senhor.txt
+hino,435,"Ó Jesus, Quanto És Piedoso!",hino-435-o-jesus-quanto-es-piedoso.txt
+hino,436,Alegria sinto em servir Jesus,hino-436-alegria-sinto-em-servir-jesus.txt
+hino,437,Os Meninos Viram Jesus Passar,hino-437-os-meninos-viram-jesus-passar.txt
+hino,438,Oh! que amor celeste!,hino-438-oh-que-amor-celeste.txt
+hino,439,Somos Jovens,hino-439-somos-jovens.txt
+hino,440,Lembra-te Do Criador,hino-440-lembra-te-do-criador.txt
+hino,441,Eu sou um cordeirinho,hino-441-eu-sou-um-cordeirinho.txt
+hino,442,"Bênçãos, bênçãos Deus derramará",hino-442-bencaos-bencaos-deus-derramara.txt
+hino,443,"Ó meninos, Deus vos convida.",hino-443-o-meninos-deus-vos-convida.txt
+hino,444,"Ó meninos, exaltemos",hino-444-o-meninos-exaltemos.txt
+hino,445,Ajuntemos um tesouro eterno,hino-445-ajuntemos-um-tesouro-eterno.txt
+hino,446,"Vós, ó jovens do Senhor.",hino-446-vos-o-jovens-do-senhor.txt
+hino,447,Brilha mais e mais,hino-447-brilha-mais-e-mais.txt
+hino,448,"Sou criança, Senhor",hino-448-sou-crianca-senhor.txt
+hino,449,"O meu Nome no céu escreveste, Senhor",hino-449-o-meu-nome-no-ceu-escreveste-senhor.txt
+hino,450,"Vamos, queridos escolher a boa parte",hino-450-vamos-queridos-escolher-a-boa-parte.txt
+hino,451,Jamais esquecerei Tua mercê,hino-451-jamais-esquecerei-tua-merce.txt
+hino,452,Jesus ó Divinal Pastor,hino-452-jesus-o-divinal-pastor.txt
+hino,453,Consagrados sejamos a Deus,hino-453-consagrados-sejamos-a-deus.txt
+hino,454,Cidadão dos céus,hino-454-cidadao-dos-ceus.txt
+hino,455,Quão ditoso é caminhar com Jesus!,hino-455-quao-ditoso-e-caminhar-com-jesus.txt
+hino,456,Somos Joias Preciosas,hino-456-somos-joias-preciosas.txt
+hino,457,Comigo está Jesus,hino-457-comigo-esta-jesus.txt
+hino,458,Cristo me ama,hino-458-cristo-me-ama.txt
+hino,459,Vamos nos Preparar,hino-459-vamos-nos-preparar.txt
+hino,460,Vamos Todos Juntos Cantar,hino-460-vamos-todos-juntos-cantar.txt
+hino,461,Abrigado em Jesus,hino-461-abrigado-em-jesus.txt
+hino,462,Gloriosa é a História,hino-462-gloriosa-e-a-historia.txt
+hino,463,Mocidade! Vamos combater!,hino-463-mocidade-vamos-combater.txt
+hino,464,Reunidos nós estamos (Solene),hino-464-reunidos-nos-estamos-solene.txt
+hino,465,"Deus, por nós, tem grande amor",hino-465-deus-por-nos-tem-grande-amor.txt
+hino,466,A Criança Consagrada,hino-466-a-crianca-consagrada.txt
+hino,467,Vamos com Jesus,hino-467-vamos-com-jesus.txt
+hino,468,Toda a criança,hino-468-toda-a-crianca.txt
+hino,469,"Pai Nosso, Que Estás Nos Céus",hino-469-pai-nosso-que-estas-nos-ceus.txt
+hino,470,"Jesus Cristo, Seus Fiéis, Ensina",hino-470-jesus-cristo-seus-fieis-ensina.txt
+hino,471,Que grande bem é andar com Cristo,hino-471-que-grande-bem-e-andar-com-cristo.txt
+hino,472,"Glorificarei, Glorificarei",hino-472-glorificarei-glorificarei.txt
+hino,473,Forasteiro sou no mundo,hino-473-forasteiro-sou-no-mundo.txt
+hino,474,Oh! Glória! Bendito é o Senhor,hino-474-oh-gloria-bendito-e-o-senhor.txt
+hino,475,Se eu for aqui provado clamarei a ti senhor,hino-475-se-eu-for-aqui-provado-clamarei-a-ti-senhor.txt
+hino,476,Deixai a Mim Vir Os Pequeninos,hino-476-deixai-a-mim-vir-os-pequeninos.txt
+hino,477,"Vinde, crianças",hino-477-vinde-criancas.txt
+hino,478,Cedo Retorna o Senhor,hino-478-cedo-retorna-o-senhor.txt
+hino,479,Somos Jovens Consagrados,hino-479-somos-jovens-consagrados.txt
+hino,480,"Jovens, amai o Conselho",hino-480-jovens-amai-o-conselho.txt
+coro,1,ALELUIA! ALELUIA!,coro-001-aleluia-aleluia.txt
+coro,2,Toda glória a Jesus,coro-002-toda-gloria-a-jesus.txt
+coro,3,Ação de graças darei,coro-003-acao-de-gracas-darei.txt
+coro,4,"GLÓRIAS, GLÓRIA NAS ALTURAS",coro-004-glorias-gloria-nas-alturas.txt
+coro,5,MAJESTOSO É CRISTO JESUS!,coro-005-majestoso-e-cristo-jesus.txt
+coro,6,A JESUS EU CANTAREI LOUVOR,coro-006-a-jesus-eu-cantarei-louvor.txt
